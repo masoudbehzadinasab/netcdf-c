@@ -117,9 +117,6 @@ NCD4_debugcopy(NCD4INFO* info)
 	{
 	    /* We need to read via NCD4 */
 	    int d4gid = makedap4id(ncp,grpid);
-if(varid == 3) {
-int x = 0;
-}
             if((ret=nc_get_var(d4gid,varid,memory)))
 	        goto done;
  	}

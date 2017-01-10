@@ -1,0 +1,18 @@
+netcdf test_vlen9 {
+types:
+  compound v_v_t_t {
+    int x ;
+    float y ;
+  }; // v_v_t_t
+  compound v_cmpd_t {
+    v_v_t_t v_t ;
+  }; // v_cmpd_t
+  v_cmpd_t(*) v_t ;
+dimensions:
+	d = 2 ;
+variables:
+	v_t v(d) ;
+data:
+
+ v = {}, {} ;
+}

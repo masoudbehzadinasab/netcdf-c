@@ -14,9 +14,9 @@
 # rawtestfiles and testfiles.
 # 
 # This program copies the files
-# ${SRC}/rawtestfiles/*.dmr to the dmrtestfiles
+# ${SRC}/dmrtestfiles/*.dmr to the dmrtestfiles
 # directory in this (dap4_test) directory.
-# Similarly it copies ${SRC}/rawtestfiles/*.dap to
+# Similarly it copies ${SRC}/daptestfiles/*.dap to
 # the local daptestfiles directory. Additionally,
 # it looks at ${SRC}/testfiles/*.cdl to see if
 # there are any .cdl files corresponding (by name)

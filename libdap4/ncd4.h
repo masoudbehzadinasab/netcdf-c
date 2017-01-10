@@ -111,6 +111,7 @@ extern int NCD4_swapdata(NCD4meta*, NClist* topvars);
 
 /* From d4fix.c */
 extern int NCD4_delimit(NCD4meta*, NCD4node* var, void** offsetp);
+extern int NCD4_moveto(NCD4meta*, NCD4node* var, off_t count, void** offsetp, void* prevoffset, off_t prevcount);
 extern int NCD4_toposort(NCD4meta*);
 
 /* From d4data.c */

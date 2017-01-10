@@ -11,10 +11,14 @@ This file contains a high-level description of this package's evolution. Release
 
 ## 4.4.2 - TBD
 
-* [Enhancement] DAP4 is now supported. Since dap2 is the default for urls, dap4 must be specified
-by (1) using "dap4:" as the url protocol, or (2) appending "#protocol=dap4" to the end of the url.
+* [Enhancement] DAP4 is now supported. Since dap2 is the default for urls, dap4 must be specified by
+(1) using "dap4:" as the url protocol, or
+(2) appending "#protocol=dap4" to the end of the url, or
+(3) appending "#dap4" to the end of the url 
 * [Enhancement] The remote testing server can now be specified with the '--with-testserver" option to ./configure.
 * [Refactor] the oc2 library is no longer independent of the main netcdf-c library. For example, it now uses ncuri, nclist, and ncbytes instead of its homegrown equivalents.
+* [Bug] Addressed an issue where netCDF wouldn't build on Windows systems using MSVC 2012. See [GitHub #304](https://github.com/Unidata/netcdf-c/issues/304) for more information.
+* [Bug] Fixed an issue related to potential type punning, see [GitHub #344](https://github.com/Unidata/netcdf-c/issues/344) for more information.
 * [Enhancement] Incorporated an enhancement provided by Greg Sjaardema, which may improve read/write times for some complex files.  Basically, linked lists were replaced in some locations where it was safe to use an array/table.  See [Pull request #328](https://github.com/Unidata/netcdf-c/pull/328) for more information.
 
 ## 4.4.1.1 - November 21, 2016

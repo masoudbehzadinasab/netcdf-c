@@ -37,6 +37,11 @@ static int delimitSeq(NCD4meta*, NCD4node* var, void** offsetp);
 static int delimitSeqArray(NCD4meta*, NCD4node* var,  void** offsetp);
 static int delimitStruct(NCD4meta*, NCD4node* var, void** offsetp);
 static int delimitStructArray(NCD4meta*, NCD4node* var,  void** offsetp);
+static int skipInstance(NCD4meta*, NCD4node* type, void** offsetp);
+static int skipAtomicInstance(NCD4meta*, NCD4node* type, void** offsetp);
+static int skipStructInstance(NCD4meta*, NCD4node* type,  void** offsetp);
+static int skipSeqInstance(NCD4meta*, NCD4node* vlentype, void** offsetp);
+
 static void walk(NCD4node* node, NClist* sorted);
 
 #ifdef D4DEBUGDATA
@@ -117,9 +122,7 @@ static void
 walk(NCD4node* node, NClist* sorted)
 {
     int i;
-if(node == NULL) {
-int x = 0;
-}
+
     if(node->visited) return;
     node->visited = 1;
 
@@ -238,9 +241,6 @@ delimitAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
     NCD4node* basetype;
     NCD4node* truetype;
 
-if(var->sort != NCD4_VAR) {
-int x = 0;
-}
     assert(var->sort == NCD4_VAR);
     dimproduct = NCD4_dimproduct(var);
     basetype = var->basetype;
@@ -414,18 +414,23 @@ done:
 
 /**************************************************/
 /*
-Walk the var's data to get to the count'th instance.
+Walk the (toplevel) var's data to get to the count'th instance.
 For effiency, it can be supplied with a previous case.
 Assumes it is called after byte swapping and offsetting.
+Assumes that var is not fixed size.
 */
 
 int 
-NCD4_moveto(NCD4node* var, off_t count, void* prevoffset, off_t prevcount, void** offsetp)
+NCD4_moveto(NCD4meta* compiler, NCD4node* var, off_t count, void** offsetp, void* prevoffset, off_t prevcount)
 {
     int ret = NC_NOERR;
-    void* offset;
     void* startoffset = NULL;
+    void* offset = NULL;
     off_t startcount = 0;
+    NCD4node* basetype = NULL;
+
+    ASSERT((ISTOPLEVEL(var)));
+
     if(prevoffset == NULL) {
 	startoffset = var->data.dap4data.memory;
 	startcount = 0;
@@ -433,34 +438,34 @@ NCD4_moveto(NCD4node* var, off_t count, void* prevoffset, off_t prevcount, void*
 	startoffset = prevoffset;
 	startcount = prevcount;
     }
-    while(startcount < count) {
-	/* Walk an instance */
-    }    
-    ASSERT((ISTOPLEVEL(topvar)));
-    topvar->data.dap4data.memory = offset;
-    if(topvar->sort == NCD4_VAR) {
-	switch (topvar->subsort) {
-        case NC_STRUCT:
-            if((ret=delimitStructArray(compiler,topvar,&offset))) goto done;
-            break;
-        case NC_SEQ:
-            if((ret=delimitSeqArray(compiler,topvar,&offset))) goto done;
-            break;
-	default:
-            if((ret=delimitAtomicVar(compiler,topvar,&offset))) goto done;
-            break;
-	}
+    basetype = var->basetype;
+    offset = startoffset;
+    for(;startcount < count;startcount++) {
+	if((ret=skipInstance(compiler,basetype,&offset)))
+	    goto done;
     }
-    /* Track the variable size (in the dap4 data) but do not include
-       any checksum */
-    topvar->data.dap4data.size = (d4size_t)(offset - *offsetp);
-    /* extract the dap4 data checksum, if present */
-    if(compiler->checksummode != NCD4_CSUM_NONE) {
-	union ATOMICS csum;
-        memcpy(csum.u8,offset,CHECKSUMSIZE);
-        topvar->data.remotechecksum = csum.u32[0];
-	if(compiler->swap) swapinline32(&topvar->data.remotechecksum);
-        offset += CHECKSUMSIZE;
+    *offsetp = offset;
+done:
+    return THROW(ret);
+}
+
+static int
+skipInstance(NCD4meta* compiler, NCD4node* type, void** offsetp)
+{
+    int ret = NC_NOERR;
+    void* offset = NULL;
+ 
+    offset = *offsetp;
+    switch (type->subsort) {
+    case NC_STRUCT:
+        if((ret=skipStructInstance(compiler,type,&offset))) goto done;
+        break;
+    case NC_SEQ:
+        if((ret=skipSeqInstance(compiler,type,&offset))) goto done;
+        break;
+    default:
+        if((ret=skipAtomicInstance(compiler,type,&offset))) goto done;
+        break;
     }
     *offsetp = offset;
 done:
@@ -469,91 +474,57 @@ done:
 
 /* Includes opaque and enum */
 static int
-moveAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
+skipAtomicInstance(NCD4meta* compiler, NCD4node* type, void** offsetp)
 {
     int ret = NC_NOERR;
     void* offset;
+    d4size_t count;
     int typesize;
-    d4size_t i;
-    d4size_t dimproduct;
-    nc_type tid;
-    NCD4node* basetype;
-    NCD4node* truetype;
-
-if(var->sort != NCD4_VAR) {
-int x = 0;
-}
-    assert(var->sort == NCD4_VAR);
-    dimproduct = NCD4_dimproduct(var);
-    basetype = var->basetype;
-    if(basetype->subsort == NC_OPAQUE)
-        return moveOpaqueVar(compiler,var,offsetp);
-
-    truetype = basetype;
-    if(truetype->subsort == NC_ENUM)
-        truetype = basetype->basetype;
 
     offset = *offsetp;
-    tid = truetype->subsort;
-    typesize = NCD4_typesize(tid);
-    if(tid != NC_STRING) {
-        offset += (typesize*dimproduct);
-    } else if(tid == NC_STRING) { /* walk the counts */
-        unsigned long long count;
-        for(i=0;i<dimproduct;i++) {
-            /* Get string count */
-            count = GETCOUNTER(offset);
-            SKIPCOUNTER(offset);
-  	    if(compiler->swap) swapinline64(&count);
-            /* skip count bytes */
-            offset += count;
-        }
-    }
-    *offsetp = offset;
-    return THROW(ret);
-}
 
-static int
-moveOpaqueVar(NCD4meta* compiler,  NCD4node* var, void** offsetp)
-{
-    int ret = NC_NOERR;
-    void* offset;
-    d4size_t i;
-    unsigned long long count;
-    d4size_t dimproduct = NCD4_dimproduct(var);
-
-    offset = *offsetp;
-    for(i=0;i<dimproduct;i++) {
-        /* Walk the instances */
+    switch (type->subsort) {
+    default: /* fixed size atomic type */
+        typesize = NCD4_typesize(type->meta.id);
+	offset += typesize;	
+	break;
+    case NC_STRING:
+        /* Get string count */
         count = GETCOUNTER(offset);
         SKIPCOUNTER(offset);
-        if(compiler->swap) swapinline64(&count);
+        /* skip count bytes */
         offset += count;
+	break;
+    case NC_OPAQUE:
+        /* get count */
+        count = GETCOUNTER(offset);
+        SKIPCOUNTER(offset);
+        offset += count;
+	break;
+    case NC_ENUM:
+        return skipAtomicInstance(compiler,type->basetype,offsetp);
     }
     *offsetp = offset;
     return THROW(ret);
 }
 
 static int
-moveStructArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
+skipStructInstance(NCD4meta* compiler, NCD4node* type,  void** offsetp)
 {
     int ret = NC_NOERR;
-    void* offset;
     d4size_t i;
-    d4size_t dimproduct;
-    NCD4node* type;
-
-   if(varortype->sort == NCD4_VAR) {
-	dimproduct = NCD4_dimproduct(varortype);	
-	type = varortype->basetype;
-   } else {
-	dimproduct = 1;
-	type = varortype;	
-   }
+    void* offset;
 
     offset = *offsetp;
-    for(i=0;i<dimproduct;i++) {
-        if((ret=moveStruct(compiler,type,&offset))) goto done;
+    /* Skip each field */
+    for(i=0;i<nclistlength(type->vars);i++) {
+        NCD4node* field = (NCD4node*)nclistget(type->vars,i);
+	NCD4node* ftype = field->basetype;
+        d4size_t dimproduct = NCD4_dimproduct(field);	
+	for(i=0;i<dimproduct;i++) {
+	    if((ret=skipInstance(compiler,ftype,&offset)))
+		goto done;
+	}
     }
     *offsetp = offset;
 done:
@@ -561,93 +532,27 @@ done:
 }
 
 static int
-moveStruct(NCD4meta* compiler, NCD4node* basetype, void** offsetp)
+skipSeqInstance(NCD4meta* compiler, NCD4node* vlentype, void** offsetp)
 {
     int ret = NC_NOERR;
-    int i;
-    void* offset;
-
-    offset = *offsetp;
-    /* The fields are associated with the basetype struct */
-    for(i=0;i<nclistlength(basetype->vars);i++) {
-        NCD4node* field = (NCD4node*)nclistget(basetype->vars,i);
-        switch (field->subsort) {
-	default:
-            if((ret=moveAtomicVar(compiler,field,&offset))) goto done;
-            break;
-        case NC_STRUCT: /* recurse */
-            if((ret=moveStructArray(compiler,field,&offset))) goto done;
-            break;
-        case NC_SEQ:
-            if((ret=moveSeqArray(compiler,field,&offset))) goto done;
-            break;
-        }
-    }
-    *offsetp = offset;
-done:
-    return THROW(ret);
-}
-
-static int
-moveSeqArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
-{
-    int ret = NC_NOERR;
-    void* offset;
     d4size_t i;
-    d4size_t dimproduct;
-    NCD4node* type;
-
-    if(varortype->sort == NCD4_VAR) {
-	dimproduct = NCD4_dimproduct(varortype);	
-	type = varortype->basetype;
-    } else {
-	dimproduct = 1;
-	type = varortype;	
-    }
-
-    offset = *offsetp;
-    for(i=0;i<dimproduct;i++) {
-        if((ret=moveSeq(compiler,type,&offset))) goto done;
-    }
-    *offsetp = offset;
-done:
-    return THROW(ret);
-}
-
-static int
-moveSeq(NCD4meta* compiler, NCD4node* vlentype, void** offsetp)
-{
-    int ret = NC_NOERR;
-    int i;
     void* offset;
+    NCD4node* structtype;
     d4size_t recordcount;
-    NCD4node* recordtype;
-
-    /* The true type of the record is the basetype of the vlen,
-       where the vlen type is the basetype of the var
-     */ 
-    assert(vlentype->subsort == NC_VLEN);
-    recordtype = vlentype->basetype;
 
     offset = *offsetp;
 
-    /* Get he record count */
+    structtype = vlentype->basetype;
+    ASSERT((structtype->subsort == NC_STRUCT));
+
+    /* Get record count */
     recordcount = GETCOUNTER(offset);
     SKIPCOUNTER(offset);
-    if(compiler->swap) swapinline64(&recordcount);
 
     for(i=0;i<recordcount;i++) {
-	switch (recordtype->subsort) {
-        case NC_STRUCT:
-            if((ret=moveStructArray(compiler,recordtype,&offset))) goto done;
-            break;
-        case NC_SEQ:
-            if((ret=moveSeqArray(compiler,recordtype,&offset))) goto done;
-            break;
-	default:
-            if((ret=moveAtomicVar(compiler,recordtype,&offset))) goto done;
-            break;
-	}
+	/* Skip a record instance */
+	if((ret=skipStructInstance(compiler,structtype,&offset)))
+	    goto done;
     }
     *offsetp = offset;
 done:

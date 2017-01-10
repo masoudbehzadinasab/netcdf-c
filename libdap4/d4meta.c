@@ -45,9 +45,9 @@ static size_t getDimrefs(NCD4node* var, int* dimids);
 static size_t getDimsizes(NCD4node* var, size_t* dimsizes);
 static void reclaimNode(NCD4node* node);
 static d4size_t getpadding(d4size_t offset, size_t alignment);
+static int markfixedsize(NCD4meta* meta);
 static void savegroupbyid(NCD4meta*,NCD4node* group);
 static void savevarbyid(NCD4node* group, NCD4node* var);
-static NCD4node* rootFor(NCD4node* node);
 
 /***************************************************/
 /* API */
@@ -604,7 +604,6 @@ done:
 static void
 savegroupbyid(NCD4meta* meta, NCD4node* group)
 {
-    NCD4node* root = rootFor(group);
     if(meta->groupbyid == NULL)
         meta->groupbyid = nclistnew();
     nclistsetalloc(meta->groupbyid,GROUPIDPART(group->meta.id));
@@ -679,14 +678,6 @@ getDimsizes(NCD4node* var, size_t* dimsizes)
 
 /**************************************************/
 /* Utilities */
-
-static NCD4node*
-rootFor(NCD4node* node)
-{
-    NCD4node* g = NCD4_groupFor(node);
-    while(g->container != NULL) g = g->container;
-    return g;
-}
 
 static void
 freeStringMemory(char** mem, int count)
@@ -909,16 +900,18 @@ backslashEscape(const char* s)
 static int
 markfixedsize(NCD4meta* meta)
 {
+    int i;
     for(i=0;i<nclistlength(meta->allnodes);i++) {
 	int fixed = 1;
-	NCD4node* n = (NCD4node*)nclistget(metadata->allnodes,i);
+	NCD4node* n = (NCD4node*)nclistget(meta->allnodes,i);
 	if(n->sort != NCD4_TYPE) continue;
 	if(n->subsort != NC_STRUCT) continue;
         for(i=0;i<nclistlength(n->vars);i++) {  
             NCD4node* field = (NCD4node*)nclistget(n->vars,i);
 	    if(!field->basetype->meta.isfixedsize) {
-		fixe = 0;
+		fixed = 0;
 		break;
+	    }
 	}
 	n->meta.isfixedsize = fixed;
     }

@@ -38,7 +38,6 @@ NCD4_swapdata(NCD4meta* compiler, NClist* topvars)
     offset = compiler->serial.dap;
     for(i=0;i<nclistlength(topvars);i++) {
 	NCD4node* var = (NCD4node*)nclistget(topvars,i);
-	NCD4node* basetype = var->basetype;
 	var->data.dap4data.memory = offset;
 
 	var->data.remotechecksum = 0;
@@ -128,9 +127,7 @@ walkOpaqueVar(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offset
     d4size_t i;
     unsigned long long count;
     d4size_t dimproduct = NCD4_dimproduct(var);
-    NCD4node* basetype;
 
-    basetype = (var->sort == NCD4_TYPE ? var : var->basetype);
     dimproduct = (var->sort == NCD4_TYPE ? 1 : NCD4_dimproduct(var));
 
     offset = *offsetp;

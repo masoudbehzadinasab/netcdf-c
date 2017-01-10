@@ -145,13 +145,13 @@ NCD4_fillinstance(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** 
     void* offset = *offsetp;
 
     /* If the type is fixed size, then just copy it */
-    if(type->meta.id <= NC_UINT64) {
+    if(type->subsort <= NC_UINT64) {
 	memcpy(dst,offset,instancesize);
 	offset += instancesize;
-    } else if(type->meta.id == NC_STRING) {/* oob strings */
+    } else if(type->subsort == NC_STRING) {/* oob strings */
 	if((ret=fillstring(meta,&offset,dst,blobs)))
 	    FAIL(ret,"fillinstance");
-    } else if(type->meta.id == NC_OPAQUE) {
+    } else if(type->subsort == NC_OPAQUE) {
 	if(type->opaque.size > 0) {
 	    /* We know the size and its the same for all instances */
 	    if((ret=fillopfixed(meta,type->opaque.size,&offset,dst)))
@@ -161,15 +161,15 @@ NCD4_fillinstance(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** 
 	    if((ret=fillopvar(meta,type,&offset,dst,blobs)))
 	        FAIL(ret,"fillinstance");
 	}
-    } else if(type->meta.id == NC_STRUCT) {
+    } else if(type->subsort == NC_STRUCT) {
 	if((ret=fillstruct(meta,type,instancesize,&offset,dst,blobs)))
             FAIL(ret,"fillinstance");
-    } else if(type->meta.id == NC_SEQ) {
+    } else if(type->subsort == NC_SEQ) {
 	if((ret=fillseq(meta,type,instancesize,&offset,dst,blobs)))
             FAIL(ret,"fillinstance");
     } else {
 	ret = NC_EINVAL;
-	goto done;
+        FAIL(ret,"fillinstance");
     }
     *offsetp = offset; /* return just past this object in dap data */
 done:

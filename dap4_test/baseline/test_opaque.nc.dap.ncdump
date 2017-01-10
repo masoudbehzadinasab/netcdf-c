@@ -1,0 +1,9 @@
+netcdf test_opaque.nc {
+types:
+  ubyte(*) _bytestring ;
+variables:
+	_bytestring vo1 ;
+data:
+
+ vo1 = {} ;
+}

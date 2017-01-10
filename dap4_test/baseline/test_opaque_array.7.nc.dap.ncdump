@@ -1,0 +1,13 @@
+netcdf test_opaque_array.7.nc {
+types:
+  ubyte(*) _bytestring ;
+dimensions:
+	_Anonymous1 = 1 ;
+	_Anonymous2 = 2 ;
+variables:
+	_bytestring vo2(_Anonymous1, _Anonymous2) ;
+data:
+
+ vo2 =
+  {}, {} ;
+}

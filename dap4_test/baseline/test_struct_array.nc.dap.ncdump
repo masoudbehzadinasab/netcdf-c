@@ -1,0 +1,20 @@
+netcdf test_struct_array.nc {
+types:
+  compound s_t {
+    int x ;
+    int y ;
+  }; // s_t
+dimensions:
+	dx = 4 ;
+	dy = 3 ;
+variables:
+	s_t s(dx, dy) ;
+		string s:_edu.ucar.maps = "/s.x", "/s.y" ;
+data:
+
+ s =
+  {0, 0}, {0, 0}, {0, 0},
+  {0, 0}, {0, 0}, {0, 0},
+  {0, 0}, {0, 0}, {0, 0},
+  {0, 0}, {0, 0}, {0, 0} ;
+}
