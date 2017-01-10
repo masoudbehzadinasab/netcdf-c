@@ -24,9 +24,13 @@ NCD4_dumpbytes(size_t size, const void* data0, int swap)
     for(i=0,pos=data;i<size; pos++,i++) {
 	struct {
 	    unsigned char u8[1];
+	      signed char i8[1];
 	    unsigned short u16[1];
+	             short i16[1];
 	    unsigned int u32[1];
+	             int i32[1];
 	    unsigned long long u64[1];
+	             long long i64[1];
 	    float f32[1];
 	    double f64[1];
 	    char s[8];
@@ -34,22 +38,29 @@ NCD4_dumpbytes(size_t size, const void* data0, int swap)
 	v.s[0] = *((char*)pos);
 	v.s[1] = '\0';
 	v.u8[0] = *((unsigned char*)pos);
+	v.i8[0] = *((signed char*)pos);
         v.u16[0] = *((unsigned short*)pos);
+        v.i16[0] = *((short*)pos);
         v.u32[0] = *((unsigned int*)pos);
+        v.i32[0] = *((int*)pos);
         v.u64[0] = *((unsigned long long*)pos);
+        v.i64[0] = *((long long*)pos);
 	if(swap) {
 	    swapinline16(v.u16);
 	    swapinline32(v.u32);
 	    swapinline32(v.u64);
+	    swapinline16(v.i16);
+	    swapinline32(v.i32);
+	    swapinline32(v.i64);
 	    swapinline32(v.f32);
 	    swapinline32(v.f64);
         }
         if(v.s[0] == '\r') strcpy(v.s,"\\r");
         else if(v.s[0] == '\n') strcpy(v.s,"\\n");
         else if(v.s[0] < ' ' || v.s[0] >= 0x7f) v.s[0] = '?';
-        fprintf(stderr,"[%03d] %02x %03d %4d", i, v.u8[0], v.u8[0], *((char*)v.u8));
-        fprintf(stderr," 0x%08x %12d", v.u32[0], (int)v.u32[0]);
-        fprintf(stderr," 0x%04x %6d", v.u16[0], (int)v.u16[0]);
+        fprintf(stderr,"[%03d] %02x %03u %4d", i, v.u8[0], v.u8[0], v.i8[0]);
+        fprintf(stderr," 0x%08x %12u %13d", v.u32[0], v.u32[0], v.i32[0]);
+        fprintf(stderr," 0x%04x %06u %7dd", v.u16[0], v.u16[0], v.i16[0]);
         fprintf(stderr," '%s'\n",v.s);
 	fflush(stderr);
     }
@@ -96,3 +107,4 @@ NCD4_dumpatomic(NCD4node* var, void* data)
     union ATOMICS* p = (union ATOMICS*)data;
     return p;
 }
+

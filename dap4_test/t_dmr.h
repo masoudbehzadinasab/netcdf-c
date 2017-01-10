@@ -13,12 +13,18 @@
 #include "ezxml.h"
 #endif
 
+typedef int TDMR;
+#define TDMR_PARSE 1
+#define TDMR_META  2
+#define TDMR_DATA  4
+
 static NCbytes* input = NULL;
 static NCbytes* output = NULL;
 static NCD4meta* metadata = NULL;
 static char* infile = NULL;
 static char* outfile = NULL;
 static int ncid = 0;
+static int translatenc4 = 0;
 
 static int
 readfile(const char* filename, NCbytes* content)
@@ -49,18 +55,39 @@ fail(int code)
 }
 
 static void
-setup(int expected, int argc, char** argv)
+setup(int tdmr, int argc, char** argv)
 {
     int ret = NC_NOERR;
-    if((argc - 1) < expected) {
+    argc--; argv++;
+    int expected = 0;
+
+    switch(tdmr) {
+    case TDMR_PARSE:
+	expected = 1;
+	break;
+    case TDMR_META:
+	expected = 2;
+	break;
+    case TDMR_DATA:
+	fprintf(stderr,"setup is not used for t_dmrdata\n");
+	exit(1);
+    }    
+
+    if(argc < expected) {
 	fprintf(stderr, "too few arguments\n");
-	fail(NC_NOERR);
+	exit(1);
     }
-    infile = argv[1];
+    infile = argv[0];    
     outfile = NULL;
     input = ncbytesnew();
     output = ncbytesnew();
     if((ret = readfile(infile,input))) fail(ret);
+
+    {
+	const char* trans = getenv("translatenc4");
+	if(trans != NULL)
+	    translatenc4 = 1;
+    }
 
 #ifdef DUMP
     NCD4_dumpbytes(ncbyteslength(input),ncbytescontents(input),0);
@@ -75,6 +102,8 @@ setup(int expected, int argc, char** argv)
 	    fail(NC_ENOMEM);
         metadata->controller = controller;
 	controller->controls.translation = NCD4_TRANSNC4;
+        if(translatenc4)
+	    controller->controls.translation = NCD4_TRANSNC4;
     }
     if(NCD4_isdmr(metadata->serial.rawdata)) {
 	char* dmr = (char*)metadata->serial.rawdata;
@@ -96,7 +125,7 @@ setup(int expected, int argc, char** argv)
 #endif
     }
     if(expected > 1) {
-        outfile = argv[2];
+        outfile = argv[1];
         if((ret = nc_create(outfile,NC_CLOBBER|NC_NETCDF4,&ncid))) fail(ret);
     }
 

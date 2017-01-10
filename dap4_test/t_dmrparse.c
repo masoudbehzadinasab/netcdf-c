@@ -15,7 +15,7 @@ main(int argc, char** argv)
 {
     int ret = NC_NOERR;
 
-    setup(1,argc,argv);
+    setup(TDMR_PARSE,argc,argv);
 
     if((ret = NCD4_parse(metadata))) goto done;
     ret = NCD4_print(metadata,output);

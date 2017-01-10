@@ -5,6 +5,8 @@
 
 #include "d4includes.h"
 #include <stdarg.h>
+#include "nc4internal.h"
+#include "ncoffsets.h"
 #include "ezxml.h"
 
 /**
@@ -19,6 +21,7 @@ static char* getFieldFQN(NCD4node* field, const char* tail);
 static int build(NCD4meta* builder, NCD4node* root);
 static int buildAtomicVar(NCD4meta* builder, NCD4node* var);
 static int buildAttributes(NCD4meta* builder, NCD4node* varorgroup);
+static int buildBytestringType(NCD4meta* builder);
 static int buildCompound(NCD4meta* builder, NCD4node* cmpdtype, NCD4node* group, char* name);
 static int buildDimension(NCD4meta* builder, NCD4node* dim);
 static int buildEnumeration(NCD4meta* builder, NCD4node* en);
@@ -27,13 +30,12 @@ static int buildMaps(NCD4meta* builder, NCD4node* var);
 static int buildMetaData(NCD4meta* builder, NCD4node* var);
 static int buildOpaque(NCD4meta* builder, NCD4node* op);
 static int buildSequence(NCD4meta* builder, NCD4node* seq);
-static int buildSequenceType(NCD4meta* builder, NCD4node* seqtype);
 static int buildStructure(NCD4meta* builder, NCD4node* structvar);
 static int buildStructureType(NCD4meta* builder, NCD4node* structtype);
 static int buildVariable(NCD4meta* builder, NCD4node* var);
+static int buildVlenType(NCD4meta* builder, NCD4node* seqtype);
 static int compileAttrValues(NCD4meta* builder, NCD4node* basetype, NClist* values, void** memoryp);
 static void computeOffsets(NCD4meta* builder, NCD4node* cmpd);
-static unsigned long long computeTypeSize(NCD4meta* builder, NCD4node* type);
 static int convertString(union ATOMICS* converter, NCD4node* type, const char* s);
 static void* copyAtomic(union ATOMICS* converter, nc_type type, size_t len, void* dst);
 static int decodeEconst(NCD4meta* builder, NCD4node* enumtype, const char* nameorval, union ATOMICS* converter);
@@ -41,8 +43,11 @@ static int downConvert(union ATOMICS* converter, NCD4node* type);
 static void freeStringMemory(char** mem, int count);
 static size_t getDimrefs(NCD4node* var, int* dimids);
 static size_t getDimsizes(NCD4node* var, size_t* dimsizes);
-static NCD4node* groupFor(NCD4node* node);
 static void reclaimNode(NCD4node* node);
+static d4size_t getpadding(d4size_t offset, size_t alignment);
+static void savegroupbyid(NCD4meta*,NCD4node* group);
+static void savevarbyid(NCD4node* group, NCD4node* var);
+static NCD4node* rootFor(NCD4node* node);
 
 /***************************************************/
 /* API */
@@ -55,17 +60,26 @@ NCD4_metabuild(NCD4meta* metadata, int ncid)
 
     metadata->ncid = ncid;
     metadata->root->meta.id = ncid;
+
     /* Fix up the atomic types */
     for(i=0;i<nclistlength(metadata->allnodes);i++) {
 	NCD4node* n = (NCD4node*)nclistget(metadata->allnodes,i);
 	if(n->sort != NCD4_TYPE) continue;
 	if(n->subsort > NC_MAX_ATOMIC_TYPE) continue;
 	n->meta.id = n->subsort;
+        n->meta.isfixedsize = (n->subsort == NC_STRING ? 0 : 1);
     }
+
     /* Topo sort the set of all nodes */
     NCD4_toposort(metadata);
+    markfixedsize(metadata);
     /* Process the metadata state */
     ret = build(metadata,metadata->root);
+    /* Done with the metadata*/
+    if((ret=nc_enddef(metadata->ncid)))
+	goto done;
+
+done:
     return THROW(ret);
 }
 
@@ -110,6 +124,7 @@ NCD4_reclaimMeta(NCD4meta* dataset)
     nullfree(dataset->error.context);
     nullfree(dataset->error.otherinfo);
     nullfree(dataset->serial.errdata);
+    nclistfree(dataset->groupbyid);
     for(i=0;i<nclistlength(dataset->blobs);i++) {
 	void* p = nclistget(dataset->blobs,i);
 	nullfree(p);
@@ -126,6 +141,7 @@ reclaimNode(NCD4node* node)
     nullfree(node->group.dmrversion);
     nullfree(node->group.datasetname);
     nclistfree(node->group.elements);
+    nclistfree(node->group.varbyid);
     nclistfree(node->en.econsts);
     nclistfreeall(node->attr.values);
     nclistfree(node->groups);
@@ -134,6 +150,7 @@ reclaimNode(NCD4node* node)
     nclistfree(node->dims);
     nclistfree(node->attributes);
     nclistfree(node->maps);
+    nullfree(node->nc4.orig.name);
 }
 
 /**************************************************/
@@ -144,30 +161,97 @@ build(NCD4meta* builder, NCD4node* root)
 {
     int i,ret = NC_NOERR;
     size_t len = nclistlength(builder->allnodes);
+
+    /* Tag the root group */
+    savegroupbyid(builder,root);
+
+    /* Compute the sizes for all type objects. Will of necessity
+       compute the offsets for compound types as well
+    */
+    for(i=0;i<len;i++) {/* Walk in postfix order */
+	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
+	if(x->sort != NCD4_TYPE) continue;
+	switch (x->subsort) {
+	case NC_OPAQUE:
+	case NC_ENUM:
+	case NC_SEQ:
+	default: /* Atomic */
+	    x->meta.memsize = NCD4_computeTypeSize(builder,x);
+	    x->meta.alignment = x->meta.memsize; /* Same for these cases */
+	    break;
+	case NC_STRUCT:
+	    /* We need to compute the field offsets in order to compute the struct size */
+	    computeOffsets(builder,x);
+	    break;		
+        }
+    }
+
     /* Start by defining  group tree separately so we can maintain
        order */
     if((ret=buildGroups(builder,root))) goto done;
+
+    /* Now, walks selected other nodes to define the netcdf-4 substrate metadata */
+
+    /* Walk and define the dimensions */
     for(i=0;i<len;i++) {/* Walk in postfix order */
 	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
-	switch (x->sort) {
-	case NCD4_DIM: if((ret=buildDimension(builder,x))) goto done; break;
-	case NCD4_TYPE:
-	    switch (x->subsort) {
-	    case NC_ENUM: if((ret=buildEnumeration(builder,x))) goto done; break;
-	    case NC_OPAQUE: if((ret=buildOpaque(builder,x))) goto done; break;
-	    case NC_STRUCT: if((ret=buildStructureType(builder,x))) goto done; break;
-	    case NC_SEQ: if((ret=buildSequenceType(builder,x))) goto done; break;
-	    default: break;
-	    }
+	if(x->sort != NCD4_DIM) continue;
+        if((ret=buildDimension(builder,x)))
+	    goto done;
+    }
+
+    /* Walk and define the enums */
+    for(i=0;i<len;i++) {/* Walk in postfix order */
+	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
+	if(x->sort != NCD4_TYPE) continue;
+	if(x->subsort != NC_ENUM) continue;
+        if((ret=buildEnumeration(builder,x)))
+	    goto done;
+    }
+
+    /* Walk and define the opaques */
+    /* If _bytestring was required by parser, then create it */
+    if(builder->_bytestring != NULL && (ret = buildBytestringType(builder)))
+	goto done;
+    /* Create other opaque types */
+    for(i=0;i<len;i++) {/* Walk in postfix order */
+	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
+	if(x->sort != NCD4_TYPE) continue;
+	if(x->subsort != NC_OPAQUE) continue;
+	if(x->opaque.size > 0 && (ret=buildOpaque(builder,x)))
+	    goto done;
+    }
+
+    /* Walk and define the compounds and sequences */
+    for(i=0;i<len;i++) {/* Walk in postfix order */
+	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
+	if(x->sort != NCD4_TYPE) continue;
+	switch(x->subsort) {
+	case NC_STRUCT:
+	    if((ret=buildStructureType(builder,x)))
+		goto done;
 	    break;
-	default: break;
+	case NC_SEQ:
+	    if((ret=buildVlenType(builder,x)))
+		goto done;
+	    break;
+	default: /* ignore */ break;
 	}
     }
+
+    /* Compute the type size for all type */
+    for(i=0;i<len;i++) {/* Walk in postfix order */
+	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
+	if(x->sort != NCD4_TYPE) continue;;
+        NCD4_computeTypeSize(builder,x);
+    }
+
     /* Finally, define the top-level variables */
     for(i=0;i<len;i++) {
 	NCD4node* x = (NCD4node*)nclistget(builder->allnodes,i);
 	if(ISVAR(x->sort) && ISTOPLEVEL(x)) buildVariable(builder,x);
     }
+
 done:
     return THROW(ret);
 }
@@ -185,6 +269,7 @@ buildGroups(NCD4meta* builder, NCD4node* parent)
 	    g->meta.id = builder->ncid;
         } else {
 	    NCCHECK((nc_def_grp(parent->meta.id,g->name,&g->meta.id)));
+	    savegroupbyid(builder,g);
         }
 	if((ret=buildGroups(builder,g))) goto done; /* recurse */
     }
@@ -196,7 +281,7 @@ static int
 buildDimension(NCD4meta* builder, NCD4node* dim)
 {
     int ret = NC_NOERR;
-    NCD4node* group = groupFor(dim);
+    NCD4node* group = NCD4_groupFor(dim);
     NCCHECK((nc_def_dim(group->meta.id,dim->name,(size_t)dim->dim.size,&dim->meta.id)));
 done:
     return THROW(ret);
@@ -206,7 +291,7 @@ static int
 buildEnumeration(NCD4meta* builder, NCD4node* en)
 {
     int i,ret = NC_NOERR;
-    NCD4node* group = groupFor(en);
+    NCD4node* group = NCD4_groupFor(en);
     NCCHECK((nc_def_enum(group->meta.id,en->basetype->meta.id,en->name,&en->meta.id)));
     for(i=0;i<nclistlength(en->en.econsts);i++) {	
 	NCD4node* ec = (NCD4node*)nclistget(en->en.econsts,i);
@@ -220,21 +305,33 @@ static int
 buildOpaque(NCD4meta* builder, NCD4node* op)
 {
     int ret = NC_NOERR;
-    NCD4node* group = groupFor(op);
+    NCD4node* group = NCD4_groupFor(op);
+    char* name  = op->name;
 
-    /* Two cases: fixed size and true varying size */
-    if(op->opaque.size > 0) {
-	char* name  = op->name;
-	/* Again, two cases, with and without UCARTAGORIGTYPE */
-	if(op->nc4.orig.name != NULL) {
-	    name = op->nc4.orig.name;
-	    group = op->nc4.orig.group;		
-	}
-	NCCHECK((nc_def_opaque(group->meta.id,op->opaque.size,name,&op->meta.id)));
-    } else {
-	/* create in root as ubyte(*) vlen named "_bytestring" */
-	NCCHECK((nc_def_vlen(builder->root->meta.id,"_bytestring",NC_UBYTE,&op->meta.id)));
+    assert(op->opaque.size > 0);
+    /* Two cases, with and without UCARTAGORIGTYPE */
+    if(op->nc4.orig.name != NULL) {
+	name = op->nc4.orig.name;
+	group = op->nc4.orig.group;		
     }
+    NCCHECK((nc_def_opaque(group->meta.id,op->opaque.size,name,&op->meta.id)));
+done:
+    return THROW(ret);
+}
+
+static int
+buildBytestringType(NCD4meta* builder)
+{
+    int ret = NC_NOERR;
+    NCD4node* bstring = builder->_bytestring;
+
+    assert(bstring != NULL); /* Will fail if we need bytestring and it was not created in d4parse*/
+
+    /* Define once */
+    if(bstring->meta.id > 0) goto done;
+    /* create in root as ubyte(*) vlen named "_bytestring" */
+    NCCHECK((nc_def_vlen(builder->root->meta.id,bstring->name,NC_UBYTE,&bstring->meta.id)));
+
 done:
     return THROW(ret);
 }
@@ -289,7 +386,7 @@ buildMaps(NCD4meta* builder, NCD4node* var)
             char* fqn = NCD4_makeFQN(mapref);
             *p++ = fqn;
         }
-	group = groupFor(var);
+	group = NCD4_groupFor(var);
 	/* Make map info visible in the netcdf-4 file */
 	ret = nc_put_att(group->meta.id,var->meta.id,NC4TAGMAPS,NC_STRING,count,memory);
         freeStringMemory(memory,count);
@@ -323,7 +420,7 @@ buildAttributes(NCD4meta* builder, NCD4node* varorgroup)
 	        nullfree(memory);
                 FAIL(NC_ERANGE,"Malformed attribute value(s) for: %s",attr->name);
         }
-	group = groupFor(varorgroup);
+	group = NCD4_groupFor(varorgroup);
         NCCHECK((nc_put_att(group->meta.id,varid,attr->name,attr->basetype->meta.id,count,memory)));
         nullfree(memory);
     }
@@ -338,7 +435,7 @@ buildStructureType(NCD4meta* builder, NCD4node* structtype)
     NCD4node* group = NULL;
     char* name = NULL;
 
-    group = groupFor(structtype); /* default */
+    group = NCD4_groupFor(structtype); /* default */
 
     /* Figure out the type name and containing group */
     if(structtype->nc4.orig.name != NULL) {
@@ -350,8 +447,7 @@ buildStructureType(NCD4meta* builder, NCD4node* structtype)
 
     /* Step 2: See if already defined */
     if(nc_inq_typeid(group->meta.id,name,&tid) == NC_NOERR) {/* Already exists */
-        structtype->meta.id = tid;
-        goto done;
+	FAIL(NC_ENAMEINUSE,"Inferred type name conflict",name);
     }    
 
     /* Since netcdf does not support forward references,
@@ -364,58 +460,36 @@ done:
 }
 
 static int
-buildSequenceType(NCD4meta* builder, NCD4node* seqtype)
+buildVlenType(NCD4meta* builder, NCD4node* vlentype)
 {
     int ret = NC_NOERR;
-    NCD4node* group = groupFor(seqtype);
-    NCD4node* ucar;
-    NCD4node* field1 = NULL; /* first field */
-    int usevlen = 0;
+    NCD4node* group;
+    NCD4node* basetype;
     nc_type tid = NC_NAT;
-    char* vlentypename = NULL;
-    char* cmpdtypename = NULL;
+    char* name = NULL;
 
-    /* Step 1: Figure out the type name and containing group */
-    if(seqtype->nc4.orig.name != NULL) {
-	vlentypename = strdup(seqtype->nc4.orig.name);
-	group = seqtype->nc4.orig.group;
+    group = NCD4_groupFor(vlentype);
+
+    /* Figure out the type name and containing group */
+    if(vlentype->nc4.orig.name != NULL) {
+	name = strdup(vlentype->nc4.orig.name);
+	group = vlentype->nc4.orig.group;
     } else {
-        vlentypename = getFieldFQN(seqtype,"_t");
-        cmpdtypename = getFieldFQN(seqtype,"_cmpd_t");
+        name = getFieldFQN(vlentype,NULL);
     }
 
-    /* Step 2: See if already defined */
-    if(nc_inq_typeid(group->meta.id,vlentypename,&tid) == NC_NOERR) {/* Already exists */
-        seqtype->meta.id = tid;
-        goto done;
+    /* See if already defined */
+    if(nc_inq_typeid(group->meta.id,name,&tid) == NC_NOERR) {/* Already exists */
+	FAIL(NC_ENAMEINUSE,"Inferred type name conflict",name);
     }    
 
-    /* Step 4: determine if we need to build a structure type or can go straight to a vlen/
-       Test:  UCARTAGVLEN attribute is set && there is only field */
-    if(builder->controller->controls.translation == NCD4_TRANSNC4) {
-        ucar = NCD4_findAttr(seqtype,UCARTAGVLEN);
-        usevlen = (ucar != NULL && (nclistlength(seqtype->vars) == 1));
-    } else
-	usevlen = 0;
-
-    /* Step 5: get/define the basetype of the sequence vlen */
-    if(usevlen) {
-	/* We use the type of the first field as the vlen type */
-	NCD4node* basetype = field1->basetype;
-	tid = basetype->meta.id;
-    } else {
-	/* we need to define a compound type */
-	if((ret=buildCompound(builder,seqtype,group,cmpdtypename))) goto done;	
-	/* save the compound type id */
-	seqtype->meta.cmpdid = seqtype->meta.id;
-	tid = seqtype->meta.cmpdid;
-    }
+    /* Get the baseline type */
+    basetype = vlentype->basetype;
     /* build the vlen type */
-    NCCHECK(nc_def_vlen(group->meta.id, vlentypename, tid, &seqtype->meta.id));
+    NCCHECK(nc_def_vlen(group->meta.id, name, basetype->meta.id, &vlentype->meta.id));
 
 done:
-    nullfree(vlentypename);
-    nullfree(cmpdtypename);
+    nullfree(name);
     return THROW(ret);
 }
 
@@ -428,7 +502,7 @@ buildCompound(NCD4meta* builder, NCD4node* cmpdtype, NCD4node* group, char* name
     computeOffsets(builder,cmpdtype);
 
     /* Step 2: define this node's compound type */
-    NCCHECK((nc_def_compound(group->meta.id,(size_t)cmpdtype->meta.offset,name,&cmpdtype->meta.id)));
+    NCCHECK((nc_def_compound(group->meta.id,(size_t)cmpdtype->meta.memsize,name,&cmpdtype->meta.id)));
 
     /* Step 3: add the fields to type */
     for(i=0;i<nclistlength(cmpdtype->vars);i++) {  
@@ -461,7 +535,7 @@ buildAtomicVar(NCD4meta* builder, NCD4node* var)
     int dimids[NC_MAX_VAR_DIMS];
     NCD4node* group;
 
-    group = groupFor(var);
+    group = NCD4_groupFor(var);
 
 #ifdef D4DEBUG
     fprintf(stderr,"build var: %s.%s\n",group->name,var->name); fflush(stderr);
@@ -469,6 +543,9 @@ buildAtomicVar(NCD4meta* builder, NCD4node* var)
 
     rank = getDimrefs(var,dimids);
     NCCHECK((nc_def_var(group->meta.id,var->name,var->basetype->meta.id,rank,dimids,&var->meta.id)));
+    /* Tag the var */
+    savevarbyid(group,var);
+
     /* Build attributes and map attributes */
     if((ret = buildMetaData(builder,var))) goto done;    
 done:
@@ -486,8 +563,11 @@ buildStructure(NCD4meta* builder, NCD4node* structvar)
     /* Step 1: define the variable */
     rank = nclistlength(structvar->dims);
     getDimrefs(structvar,dimids);
-    group = groupFor(structvar);
+    group = NCD4_groupFor(structvar);
     NCCHECK((nc_def_var(group->meta.id,structvar->name,structvar->basetype->meta.id,rank,dimids,&structvar->meta.id)));
+    /* Tag the var */
+    savevarbyid(group,structvar);
+
     /* Build attributes and map attributes WRT the variable */
     if((ret = buildMetaData(builder,structvar))) goto done;    
 
@@ -506,8 +586,10 @@ buildSequence(NCD4meta* builder, NCD4node* seq)
 
     rank = nclistlength(seq->dims);
     getDimrefs(seq,dimids);
-    group = groupFor(seq);
+    group = NCD4_groupFor(seq);
     NCCHECK((nc_def_var(group->meta.id,seq->name,seq->basetype->meta.id,rank,dimids,&seq->meta.id)));
+    savevarbyid(group,seq);
+
     /* Build attributes and map attributes WRT the variable */
     if((ret = buildMetaData(builder,seq))) goto done;    
 
@@ -517,6 +599,27 @@ done:
 
 /***************************************************/
 /* Utilities */
+
+/* Insert a group into the groupbyid for a group */
+static void
+savegroupbyid(NCD4meta* meta, NCD4node* group)
+{
+    NCD4node* root = rootFor(group);
+    if(meta->groupbyid == NULL)
+        meta->groupbyid = nclistnew();
+    nclistsetalloc(meta->groupbyid,GROUPIDPART(group->meta.id));
+    nclistinsert(meta->groupbyid,GROUPIDPART(group->meta.id),group);
+}
+
+/* Insert a var into the varbyid for a group */
+static void
+savevarbyid(NCD4node* group, NCD4node* var)
+{
+    if(group->group.varbyid == NULL)
+        group->group.varbyid = nclistnew();
+    nclistsetalloc(group->group.varbyid,var->meta.id);
+    nclistinsert(group->group.varbyid,var->meta.id,var);
+}
 
 /* Collect FQN path from node upto (but not including)
    the first enclosing group and create an name from it
@@ -543,7 +646,8 @@ getFieldFQN(NCD4node* field, const char* tail)
 	ncbytescat(fqn,escaped);
 	free(escaped);
     }
-    ncbytescat(fqn,tail);
+    if(tail != NULL)
+        ncbytescat(fqn,tail);
     result = ncbytesextract(fqn);
     ncbytesfree(fqn);
     return result;    
@@ -576,12 +680,12 @@ getDimsizes(NCD4node* var, size_t* dimsizes)
 /**************************************************/
 /* Utilities */
 
-
 static NCD4node*
-groupFor(NCD4node* node)
+rootFor(NCD4node* node)
 {
-    while(node->sort != NCD4_GROUP) node = node->container;
-    return node;
+    NCD4node* g = NCD4_groupFor(node);
+    while(g->container != NULL) g = g->container;
+    return g;
 }
 
 static void
@@ -692,7 +796,7 @@ convertString(union ATOMICS* converter, NCD4node* type, const char* s)
 static int
 downConvert(union ATOMICS* converter, NCD4node* type)
 {
-    unsigned long long u64 = converter->u64[0];
+    d4size_t u64 = converter->u64[0];
     long long i64 = converter->i64[0];
     double f64 = converter->f64[0];
     char* s = converter->s[0];
@@ -796,39 +900,113 @@ backslashEscape(const char* s)
     return escaped;
 }
 
-/* Compute compound type field offsets */
+/* Tag each compound type as fixed size or not
+   Assumes:
+	- atomic types defined and marked
+	- topo sorted
+*/
+
+static int
+markfixedsize(NCD4meta* meta)
+{
+    for(i=0;i<nclistlength(meta->allnodes);i++) {
+	int fixed = 1;
+	NCD4node* n = (NCD4node*)nclistget(metadata->allnodes,i);
+	if(n->sort != NCD4_TYPE) continue;
+	if(n->subsort != NC_STRUCT) continue;
+        for(i=0;i<nclistlength(n->vars);i++) {  
+            NCD4node* field = (NCD4node*)nclistget(n->vars,i);
+	    if(!field->basetype->meta.isfixedsize) {
+		fixe = 0;
+		break;
+	}
+	n->meta.isfixedsize = fixed;
+    }
+    return NC_NOERR;
+}
+
+/* Compute compound type field offsets and compound type total size */
 static void
 computeOffsets(NCD4meta* builder, NCD4node* cmpd)
 {
     int i;
-    unsigned long long offset = 0;
-    unsigned long long size = 0;
+    d4size_t offset = 0;
+    d4size_t largestalign = 1;
+    d4size_t size = 0;
 
     for(i=0;i<nclistlength(cmpd->vars);i++) {
 	NCD4node* field = (NCD4node*)nclistget(cmpd->vars,i);
-	if(field->subsort == NC_STRUCT) {
-	    computeOffsets(builder, field->basetype);
-	    size = computeTypeSize(builder,field->basetype);
-	} else if(field->subsort == NC_SEQ) {
-	    size = sizeof(nc_vlen_t);
-	} else
-	    size = computeTypeSize(builder,field->basetype);
-	/* Multiply by the field dimproduct*/
+	NCD4node* ftype = field->basetype;
+	size_t alignment;
+	if(ftype->subsort == NC_STRUCT) {
+	    /* Recurse */
+	    computeOffsets(builder, ftype);
+	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
+	    //size = ftype->NCD4_computeTypeSize(builder,ftype);
+	} else {/* Size and alignment will already have been set */
+	    assert(ftype->meta.memsize > 0);
+	    alignment = ftype->meta.alignment;
+            size=ftype->meta.memsize;
+	}
+#if 0
+	} else if(ftype->subsort == NC_SEQ) { /* VLEN */
+	    alignment = nctypealignment(NC_VLEN);
+	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
+	    //size = NCD4_computeTypeSize(builder,ftype);
+	} else if(ftype->subsort == NC_OPAQUE) {
+	    /* Either fixed or a vlen */
+	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
+	    if(ftype->opaque.size == 0) {/* treat like vlen */
+	        alignment = nctypealignment(NC_VLEN);
+	        //size = NCD4_computeTypeSize(builder,ftype);
+	    } else { /* fixed size */
+	        alignment = nctypealignment(NC_OPAQUE);
+	        //size = NCD4_computeTypeSize(builder,ftype);
+	    }
+	} else if(ftype->subsort == NC_ENUM) {
+	    NCD4node* truetype = ftype->basetype;
+	    alignment = nctypealignment(truetype->meta.id);
+	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
+	    //size = NCD4_computeTypeSize(builder,truetype);
+	} else { /* Basically a primitive */
+	    alignment = nctypealignment(ftype->meta.id);
+	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
+	    //size = NCD4_computeTypeSize(builder,ftype);
+	}
+#endif
+
+        if(alignment > largestalign)
+	    largestalign = alignment;
+	/* Add possible padding wrt to previous field */
+	offset += getpadding(offset,alignment);	
+	field->meta.offset = offset;
+	assert(ftype->meta.memsize > 0);
+	size = ftype->meta.memsize;
+	//field->meta.memsize = size;
+	/* Now ultiply by the field dimproduct*/
 	if(nclistlength(field->dims) > 0) {
-            unsigned long long count = NCD4_dimproduct(field);
+            d4size_t count = NCD4_dimproduct(field);
 	    size = (size * count);
 	}
-	field->meta.offset = offset;
 	offset += size;
     }
-    /* Save final offset as the size of the compound */
-    cmpd->meta.offset = offset;
+    /* Compute compound-level info */
+    /* A struct alignment is the same as largestalign */
+    cmpd->meta.alignment = largestalign;
+    offset += (offset % largestalign); /* round up compound size */
+    cmpd->meta.memsize = offset;
 }
 
-static unsigned long long
-computeTypeSize(NCD4meta* builder, NCD4node* type)
+/*
+Compute the in-memory size of an instance of a type.
+Note that nc_inq_type is used, so that C struct field
+alignment is taken into account for compound types.
+The variables total size will be this * dimproduct.
+*/
+size_t
+NCD4_computeTypeSize(NCD4meta* builder, NCD4node* type)
 {
-    unsigned long long size = 0;
+    size_t size = 0;
 
     switch (type->sort) {
     case NCD4_TYPE:
@@ -838,25 +1016,30 @@ computeTypeSize(NCD4meta* builder, NCD4node* type)
             size = (type->opaque.size == 0 ? sizeof(nc_vlen_t) : type->opaque.size);
   	    break;
         case NC_ENUM:
-   	    size = computeTypeSize(builder,type->basetype);
+   	    size = NCD4_computeTypeSize(builder,type->basetype);
 	    break;
         case NC_SEQ:
 	    size = sizeof(nc_vlen_t);
 	    break;
-        case NC_STRUCT:
-	    size = type->meta.offset;
-#if 0
-            size = 0;
-            for(i=0;i<nclistlength(type->vars);i++) {
-                unsigned long long count = 0;
-                NCD4node* field = (NCD4node*)nclistget(type->vars,i);
-                count = NCD4_dimproduct(field);
-                size += (count * computeTypeSize(builder,field->basetype));
-            }
-#endif
+        case NC_STRUCT: {
+	    int ret;
+	    NCD4node* group = NCD4_groupFor(type);
+	    if((ret = nc_inq_type(group->meta.id,type->meta.id,/*name*/NULL,&size)))
+		return 0;
+	    }; break;
         }
         break;
     default: break; /* ignore */
     }        
+    type->meta.memsize = size;
     return size;
 }
+
+static d4size_t
+getpadding(d4size_t offset, size_t alignment)
+{
+    d4size_t rem = (alignment==0?0:(offset % alignment));
+    d4size_t pad = (rem==0?0:(alignment - rem));
+    return pad;
+}
+

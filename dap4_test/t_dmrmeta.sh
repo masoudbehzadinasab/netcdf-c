@@ -18,32 +18,32 @@ else
 fi
 done
 
-if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.ncdump ; fi
+if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.dmr.ncdump ; fi
 for f in $F ; do
     if ! ./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f} ; then
         failure "./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f}"
     fi
     echo ncdump -h ./results/${f}
-    ncdump -h ./results/${f} > ./results/${f}.ncdump
+    ncdump -h ./results/${f} > ./results/${f}.dmr.ncdump
     if test "x${TEST}" = x1 ; then
-	echo diff -wBb ${BASELINE}/${f}.ncdump ./results/${f}.ncdump
-	if ! diff -wBb ${BASELINE}/${f}.ncdump ./results/${f}.ncdump ; then
-	    failure "diff -wBb ${BASELINE}/${f}.ncdump ./results/${f}.ncdump"
+	echo diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump
+	if ! diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump ; then
+	    failure "diff -wBb ${BASELINE}/${f}.ncdump ./results/${f}.dmr.ncdump"
 	fi
     elif test "x${RESET}" = x1 ; then
 	echo "${f}:" 
-	cp ./results/${f}.ncdump ${BASELINE}/${f}.ncdump
+	cp ./results/${f}.dmr.ncdump ${BASELINE}/${f}.dmr.ncdump
     fi
 done
 
 if test "x${CDLDIFF}" = x1 ; then
   for f in $CDL ; do
-    echo "diff -wBb ${CDLTESTFILES}/${f}.cdl ./results/${f}.nc.ncdump"
+    echo "diff -wBb ${CDLTESTFILES}/${f}.cdl ./results/${f}.dmr.ncdump"
     rm -f ./tmp
     cat ${CDLTESTFILES}/${f}.cdl \
     cat >./tmp
-    echo diff -wBbu ./tmp ./results/${f}.nc.ncdump
-    if ! diff -wBbu ./tmp ./results/${f}.nc.ncdump ; then
+    echo diff -wBbu ./tmp ./results/${f}.dmr.ncdump
+    if ! diff -wBbu ./tmp ./results/${f}.dmr.ncdump ; then
 	failure "${f}" 
     fi
   done

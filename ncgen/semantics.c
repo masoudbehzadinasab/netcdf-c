@@ -7,7 +7,7 @@
 
 #include        "includes.h"
 #include        "dump.h"
-#include        "offsets.h"
+#include        "ncoffsets.h"
 
 /* Forward*/
 static void computefqns(void);
@@ -631,8 +631,10 @@ computesize(Symbol* tsym)
 		Symbol* field = (Symbol*)listget(tsym->subnodes,i);
 		ASSERT(field->subclass == NC_FIELD);
 		computesize(field);
-		/* alignment of struct is same as alignment of first field*/
+/* This is apparently incorrect, alignment is to largealing (see below)
+		// alignment of struct is same as alignment of first field
 		if(i==0) tsym->typ.alignment = field->typ.alignment;
+*/
 	    }
 	    /* now compute the size of the compound based on*/
 	    /* what user specified*/

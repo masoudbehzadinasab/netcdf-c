@@ -17,6 +17,7 @@ static int constrainable(NCURI*);
 static void freeCurl(NCD4curl*);
 static void freeInfo(NCD4INFO*);
 static int paramcheck(NCD4INFO*, const char* key, const char* subkey);
+static const char* getparam(NCD4INFO* info, const char* key);
 static int set_curl_properties(NCD4INFO*);
 
 /**************************************************/
@@ -66,14 +67,20 @@ NCD4_open(const char * path, int mode,
 	}
     }
 
-    /* Use libsrc4 code (netcdf-4) for storing metadata and data*/
+    /* process control client parameters */
+    applyclientparamcontrols(d4info);
+
+    /* Use libsrc4 code (netcdf-4) for storing metadata */
     {
-	char tmpname[32];
+	char tmpname[NC_MAX_NAME];
 
         /* Create fake file name: exact name must be unique,
            but is otherwise irrelevant because we are using NC_DISKLESS
         */
-        snprintf(tmpname,sizeof(tmpname),"%d",nc->int_ncid);
+	if(strlen(d4info->controls.substratename) > 0)
+            snprintf(tmpname,sizeof(tmpname),"%s",d4info->controls.substratename);
+	else
+            snprintf(tmpname,sizeof(tmpname),"tmp_%d",nc->int_ncid);
 
         /* Now, use the file to create the hidden, in-memory netcdf file.
 	   We want this hidden file to always be NC_NETCDF4, so we need to
@@ -82,18 +89,19 @@ NCD4_open(const char * path, int mode,
 	{
 	    int new = NC_NETCDF4;
 	    int old = 0;
+	    int ncflags = NC_DISKLESS|NC_NETCDF4|NC_CLOBBER;
+
+	    if(FLAGSET(d4info->controls.debugflags,NCF_DEBUG_COPY))
+		ncflags |= NC_WRITE;
+	    
 	    nc_set_default_format(new,&old); /* save and change */
-            ret = nc_create(tmpname,NC_DISKLESS|NC_NETCDF4,&d4info->nc4id);
+            ret = nc_create(tmpname,ncflags,&d4info->substrate.nc4id);
 	    nc_set_default_format(old,&new); /* restore */
 	}
         if(ret != NC_NOERR) goto done;
 	/* Avoid fill */
-	nc_set_fill(d4info->nc4id,NC_NOFILL,NULL);
-
+	nc_set_fill(getnc4id(nc),NC_NOFILL,NULL);
     }
-
-    /* process control client parameters */
-    applyclientparamcontrols(d4info);
 
     /* Turn on logging; only do this after oc_open*/
     if((value = ncurilookup(d4info->uri,"log")) != NULL) {
@@ -163,7 +171,7 @@ the data was little-endian
         ncbytescontents(d4info->curl->packet)))==NULL)
 	{ret = NC_ENOMEM; goto done;}
     d4info->substrate.metadata->controller = d4info;
-    d4info->substrate.metadata->ncid = d4info->nc4id; /* Transfer netcdf ncid */
+    d4info->substrate.metadata->ncid = getnc4id(nc); /* Transfer netcdf ncid */
 
     if(NCD4_isdmr(d4info->substrate.metadata->serial.rawdata)) {
 	char* dmr = (char*)d4info->substrate.metadata->serial.rawdata;
@@ -176,7 +184,7 @@ the data was little-endian
 {
     fprintf(stderr,"=============\n");
     fputs(d4info->substrate.metadata->serial.dmr,stderr);
-    fprintf(stderr,"\n=============");
+    fprintf(stderr,"\n=============\n");
     fflush(stderr);
 }
 #endif
@@ -184,26 +192,26 @@ the data was little-endian
     if((ret = NCD4_parse(d4info->substrate.metadata))) goto done;
 #ifdef D4DEBUGMETA
 {
-    fprintf(stderr,"/////////////\n");
+    fprintf(stderr,"\n/////////////\n");
     NCbytes* buf = ncbytesnew();
     NCD4_print(d4info->substrate.metadata,buf);
     ncbytesnull(buf);
     fputs(ncbytescontents(buf),stderr);
     ncbytesfree(buf);
-    fprintf(stderr,"/////////////\n");
+    fprintf(stderr,"\n/////////////\n");
     fflush(stderr);
 }
 #endif
     if((ret = NCD4_metabuild(d4info->substrate.metadata,d4info->substrate.metadata->ncid))) goto done;
-    ret = nc_enddef(d4info->substrate.metadata->ncid);
     if(ret != NC_NOERR && ret != NC_EVARSIZE) goto done;
-    if((ret = NCD4_databuild(d4info->substrate.metadata))) goto done;
+    if((ret = NCD4_processdata(d4info->substrate.metadata))) goto done;
 
     return THROW(ret);
 
 done:
     if(ret) {
-        if(d4info != NULL) NCD4_close(d4info->controller->ext_ncid);
+	freeInfo(d4info);
+        nc->dispatchdata = NULL;
     }
     return THROW(ret);
 }
@@ -214,15 +222,24 @@ NCD4_close(int ncid)
     int ret = NC_NOERR;
     NC* nc;
     NCD4INFO* d4info;
+    int substrateid;
 
     ret = NC_check_id(ncid, (NC**)&nc);
     if(ret != NC_NOERR) goto done;
     d4info = (NCD4INFO*)nc->dispatchdata;
+    substrateid = makenc4id(nc,ncid);
 
-    /* We call abort rather than close to avoid
-       trying to write anything or try to pad file length
+    /* We call abort rather than close to avoid trying to write anything,
+       except if we are debugging
      */
-    ret = nc_abort(getnc4id(nc));
+    if(FLAGSET(d4info->controls.debugflags,NCF_DEBUG_COPY)) {
+        /* Dump the data into the substrate */
+	if((ret = NCD4_debugcopy(d4info)))
+	    goto done;
+        ret = nc_close(substrateid);
+    } else {
+        ret = nc_abort(substrateid);
+    }
 
     freeInfo(d4info);
 
@@ -235,6 +252,8 @@ NCD4_abort(int ncid)
 {
     return NCD4_close(ncid);
 }
+
+/**************************************************/
 
 static void
 freeInfo(NCD4INFO* d4info)
@@ -395,19 +414,28 @@ applyclientparamcontrols(NCD4INFO* info)
 
     if(paramcheck(info,"translate","nc4"))
 	info->controls.translation = NCD4_TRANSNC4;
+
+    /* Look at the mode flags */
+    if(paramcheck(info,"debug","copy"))
+	SETFLAG(info->controls.debugflags,NCF_DEBUG_COPY); /* => close */
+    {
+	const char* value = getparam(info,"substratename");
+	if(value != NULL)
+	    strncpy(info->controls.substratename,value,NC_MAX_NAME);
+    }
 }
 
 /* Search for substring in value of param. If substring == NULL; then just
    check if param is defined.
 */
 static int
-paramcheck(NCD4INFO* nccomm, const char* key, const char* subkey)
+paramcheck(NCD4INFO* info, const char* key, const char* subkey)
 {
     const char* value;
     char* p;
 
-    if(nccomm == NULL || key == NULL) return 0;
-    if((value=ncurilookup(nccomm->uri,key)) == NULL)
+    value = getparam(info, key);
+    if(value == NULL)
 	return 0;
     if(subkey == NULL) return 1;
     p = strstr(value,subkey);
@@ -415,4 +443,18 @@ paramcheck(NCD4INFO* nccomm, const char* key, const char* subkey)
     p += strlen(subkey);
     if(*p != '\0' && strchr(checkseps,*p) == NULL) return 0;
     return 1;
+}
+
+/*
+Given a parameter key, return its value or NULL if not defined.
+*/
+static const char*
+getparam(NCD4INFO* info, const char* key)
+{
+    const char* value;
+
+    if(info == NULL || key == NULL) return NULL;
+    if((value=ncurilookup(info->uri,key)) == NULL)
+	return NULL;
+    return value;
 }

@@ -12,4 +12,7 @@
       <Dim name="/d2"/>
     </Int32>
   </Variables>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
 </Dataset>

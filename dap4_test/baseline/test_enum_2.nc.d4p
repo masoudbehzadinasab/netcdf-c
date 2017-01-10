@@ -20,6 +20,9 @@
       <EnumConst name="Missing" value="127"/>
     </Enumeration>
   </Types>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
   <Groups>
     <Group name="h">
       <Variables>

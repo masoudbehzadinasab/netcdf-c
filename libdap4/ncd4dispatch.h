@@ -26,6 +26,18 @@ NCD4_close(int ncid);
 EXTERNL int
 NCD4_abort(int ncid);
 
+EXTERNL int
+NCD4_get_vara(int ncid, int varid,
+	    const size_t *start, const size_t *edges,
+            void *value,
+	    nc_type memtype);
+
+EXTERNL int
+NCD4_get_vars(int ncid, int varid,
+	    const size_t *start, const size_t *edges, const ptrdiff_t* strides,
+            void *value,
+	    nc_type memtype);
+
 extern int NCD4_initialize(void);
 
 #if defined(__cplusplus)

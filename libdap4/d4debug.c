@@ -6,9 +6,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "nclog.h"
-#include "ncd4.h"
-#include "d4debug.h"
+#include "d4includes.h"
 
 int ncdap4debug = 0;
 
@@ -85,3 +83,54 @@ NCD4_subsortname(nc_type subsort)
     }
     return "unknown";
 }
+
+/*
+For debugging purposes, it is desirable to fake an nccopy
+bv inserting the data into the substrate and then writing it out.
+*/
+
+int
+NCD4_debugcopy(NCD4INFO* info)
+{
+    int i,ret=NC_NOERR;
+    NCD4meta* meta = info->substrate.metadata;
+    NClist* topvars = nclistnew();
+    NC* ncp = info->controller;
+
+    /* Walk each top level variable, read all of it and write it to the substrate */
+    if((ret=NCD4_getToplevelVars(meta, NULL, topvars)))
+	goto done;
+    /* Read from the dap data by going thru the dap4 interface */
+    for(i=0;i<nclistlength(topvars);i++) {
+	NCD4node* var = nclistget(topvars,i);
+	NCD4node* type = var->basetype;
+	NCD4node* grp = NCD4_groupFor(var);
+	int grpid = grp->meta.id;
+	int varid = var->meta.id;
+	d4size_t varsize;
+	void* memory = NULL;
+
+	varsize = type->meta.memsize * NCD4_dimproduct(var);
+	memory = malloc(varsize);
+        if(memory == NULL)
+	    {ret = NC_ENOMEM; goto done;}		
+	{
+	    /* We need to read via NCD4 */
+	    int d4gid = makedap4id(ncp,grpid);
+if(varid == 3) {
+int x = 0;
+}
+            if((ret=nc_get_var(d4gid,varid,memory)))
+	        goto done;
+ 	}
+	/* Now, turn around and write it to the substrate */
+        if((ret=nc_put_var(grpid,varid,memory)))
+	    goto done;
+    }	    
+done:
+    if(ret != NC_NOERR) {
+        fprintf(stderr,"debugcopy: %d %s\n",ret,nc_strerror(ret));
+    }
+    return THROW(ret);
+}
+

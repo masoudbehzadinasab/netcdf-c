@@ -16,29 +16,11 @@ to do a variety of things.
 * (topo)
   a. topologically sort the set of allnodes in postfix order.
 
-* (mark)
-  a. compute the HASSEQ, HASSTR, HASOPFIX, HASOPVAR flags.
-
 * (delimit)
-  a. Compute the offset and sizes of variable and fields
+  a. Delimit the top-level vars in the dap4data and also compute checksum
 
-* (fixstr)
-  a. for a atomic string typed variable:
-       out-of-band (oob) the strings.
-
-* (fixopfixed)
-  a. for a variable length atomic opaque typed variable
-       out-of-band (oob) the opaque instances
-
-* (fixsequences)
-  a. Find all sequence instances and convert them to a single vlen;
-     Ideally, we would like to just have it point to the record data
-     as it is (if they are fixed size), but this significantly complicates
-     the code, so we out-of-band the records. Not very efficient but ok for now.
-
-WARNING: because we may move a top-level variable's space inside
-sizefixxxx, you have to be extra careful to relativize pointers
-if there is a chance that a recursive call will reallocate.
+* (fixedsizea)
+  a. mark types as fixed size or note; recursive on compound types.
 
 */
 
@@ -49,19 +31,12 @@ if there is a chance that a recursive call will reallocate.
 /**************************************************/
 /* Forward */
 
-static d4size_t computeInstanceSize(NCD4meta*, NCD4node* var, int flags, void** offsetp);
-static d4size_t computeSequenceSize(NCD4meta*, NCD4node* seqtype, void** offsetp);
 static int delimitAtomicVar(NCD4meta*, NCD4node* var, void** offsetp);
 static int delimitOpaqueVar(NCD4meta*,  NCD4node* var, void** offsetp);
 static int delimitSeq(NCD4meta*, NCD4node* var, void** offsetp);
 static int delimitSeqArray(NCD4meta*, NCD4node* var,  void** offsetp);
 static int delimitStruct(NCD4meta*, NCD4node* var, void** offsetp);
 static int delimitStructArray(NCD4meta*, NCD4node* var,  void** offsetp);
-static int fixseqSeq(NCD4meta* compiler, NCD4node* top, NCD4node* var, void** offsetp);
-static int fixseqWalk(NCD4meta*, NCD4node* top, NCD4node* cmpd, void** offsetp);
-static int flagWalk(NCD4meta* compiler, NCD4node* node, int* flagsp);
-static int resize(NCD4meta*, NCD4node* top, ptrdiff_t needed, void* empty, void* suffixdata);
-static NCD4node* toplevel(NCD4node* field);
 static void walk(NCD4node* node, NClist* sorted);
 
 #ifdef D4DEBUGDATA
@@ -125,6 +100,13 @@ fprintf(stderr,"unvisited node: %s\n",node->name); fflush(stderr);
     }
     nclistfree(compiler->allnodes);
     compiler->allnodes = sorted;
+#ifdef D4DEBUGDATA
+{int i;
+for(i=0;i<nclistlength(sorted);i++)
+fprintf(stderr,"sorted: %s\n",((NCD4node*)nclistget(sorted,i))->name);
+fflush(stderr);
+}
+#endif
     return THROW(ret);
 }
 
@@ -135,6 +117,9 @@ static void
 walk(NCD4node* node, NClist* sorted)
 {
     int i;
+if(node == NULL) {
+int x = 0;
+}
     if(node->visited) return;
     node->visited = 1;
 
@@ -148,6 +133,9 @@ walk(NCD4node* node, NClist* sorted)
     case NCD4_TYPE: /* Need to discriminate on the subsort */
 	switch (node->subsort) {
 	case NC_SEQ:
+	    /* Depends on its basetype */
+	    walk(node->basetype,sorted);
+	    break;
 	case NC_STRUCT: /* Depends on its fields */
             for(i=0;i<nclistlength(node->vars);i++) {
 	        NCD4node* f = (NCD4node*)nclistget(node->vars,i);
@@ -193,129 +181,51 @@ walk(NCD4node* node, NClist* sorted)
 
 
 /**************************************************/
-/**
-Mark variables that directly
-or transitively contain 
-variable length data.
-*/
-
-int
-NCD4_markflags(NCD4meta* compiler, NClist* toplevel)
-{
-    int i,ret = NC_NOERR;
-    for(i=0;i<nclistlength(toplevel);i++) {
-        int flags = 0;
-	NCD4node* var = nclistget(toplevel,i);
-        ret = flagWalk(compiler,var,&flags);
-    }
-    return THROW(ret);
-}
-
-/*
-Do depth first search looking for flagable fields
-We will propagate them as we unwind the recursion.
-*/
-static int
-flagWalk(NCD4meta* compiler, NCD4node* node, int* flagsp)
-{
-    int i, ret = NC_NOERR;
-    int flags = 0;
-    int fieldflags;
-
-    /* Mark this node */
-    switch (node->basetype->subsort) {
-    case NC_SEQ:
-	fieldflags = 0;
-        for(i=0;i<nclistlength(node->basetype->vars);i++) {
-	    NCD4node* field = (NCD4node*)nclistget(node->basetype->vars,i);
- 	    if((ret=flagWalk(compiler,field,&fieldflags))) goto done;
-	}
-	if((fieldflags & HASSEQ) == 0) fieldflags |= LEAFSEQ;
-        flags |= fieldflags;
-	flags |= HASSEQ;
-        break;
-    case NC_STRUCT: /* recurse*/
-	fieldflags = 0;
-        for(i=0;i<nclistlength(node->basetype->vars);i++) {
-	    NCD4node* field = (NCD4node*)nclistget(node->basetype->vars,i);
-	    if((ret=flagWalk(compiler,field,&fieldflags))) goto done;
-	}
-        flags |= fieldflags;
-	break;
-    case NC_STRING:
-        flags |= HASSTR;
-	break;
-    case NC_OPAQUE:
-	if(node->basetype->opaque.size == 0)
-	    flags |= HASOPVAR;
-	else
-	    flags |= HASOPFIX;
-	break;
-    default: /* ignore */
-	break;
-    }
-    node->data.flags = flags;
-#ifdef D4DEBUGDATA
-fprintf(stderr,"flagWalk: %s: %d\n",node->name,flags);
-#endif
-    /* LEAFSEQ does not propagate */
-    flags &= ~LEAFSEQ;
-    *flagsp |= flags;
-done:
-    return THROW(ret);
-}
-
-/**************************************************/
-
 /* Mark the offset and length of each var/field
-   inside the raw dapdata. This is transient info
-   because some data will be compressed out
-   by other code (here or in d4data).
+   inside the raw dapdata.
+   Assumes it is called before byte swapping, so we
+   need to do swapping of counts and the final remote checksum.
 */
 
 int
-NCD4_delimit(NCD4meta* compiler, NCD4node* var, void** offsetp)
+NCD4_delimit(NCD4meta* compiler, NCD4node* topvar, void** offsetp)
 {
     int ret = NC_NOERR;
     void* offset;
 
     offset = *offsetp;
-    ASSERT((ISTOPLEVEL(var)));
-    var->data.topvardata.memory = offset;
-    if(var->sort == NCD4_VAR) {
-	switch (var->subsort) {
+    ASSERT((ISTOPLEVEL(topvar)));
+    topvar->data.dap4data.memory = offset;
+    if(topvar->sort == NCD4_VAR) {
+	switch (topvar->subsort) {
         case NC_STRUCT:
-            if((ret=delimitStructArray(compiler,var,&offset))) goto done;
+            if((ret=delimitStructArray(compiler,topvar,&offset))) goto done;
             break;
         case NC_SEQ:
-            if((ret=delimitSeqArray(compiler,var,&offset))) goto done;
+            if((ret=delimitSeqArray(compiler,topvar,&offset))) goto done;
             break;
 	default:
-            if((ret=delimitAtomicVar(compiler,var,&offset))) goto done;
+            if((ret=delimitAtomicVar(compiler,topvar,&offset))) goto done;
             break;
 	}
     }
-    /* process checksum */
-    if(ISTOPLEVEL(var) && (compiler->checksummode != NCD4_CSUM_NONE)) {
+    /* Track the variable size (in the dap4 data) but do not include
+       any checksum */
+    topvar->data.dap4data.size = (d4size_t)(offset - *offsetp);
+    /* extract the dap4 data checksum, if present */
+    if(compiler->checksummode != NCD4_CSUM_NONE) {
 	union ATOMICS csum;
         memcpy(csum.u8,offset,CHECKSUMSIZE);
-        var->data.remotechecksum = csum.u32[0];
-	if(compiler->serial.hostlittleendian != compiler->serial.remotelittleendian) {
-	    swapinline32(&var->data.remotechecksum);
-	}	    
+        topvar->data.remotechecksum = csum.u32[0];
+	if(compiler->swap) swapinline32(&topvar->data.remotechecksum);
         offset += CHECKSUMSIZE;
     }
-#ifdef D4DEBUGDATA
-{
-unsigned long pos = (*offsetp - compiler->serial.dap);
-fprintf(stderr,"delimit: %s: %lu/%lu (0x%lx)\n",var->name,pos,(unsigned long)var->data.topvardata.size,var->data.topvardata.memory);
-}
-#endif
     *offsetp = offset;
 done:
     return THROW(ret);
 }
 
+/* Includes opaque and enum */
 static int
 delimitAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
 {
@@ -323,23 +233,25 @@ delimitAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
     void* offset;
     int typesize;
     d4size_t i;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    d4size_t dimproduct;
     nc_type tid;
+    NCD4node* basetype;
     NCD4node* truetype;
 
-    if(var->basetype->subsort == NC_OPAQUE)
+if(var->sort != NCD4_VAR) {
+int x = 0;
+}
+    assert(var->sort == NCD4_VAR);
+    dimproduct = NCD4_dimproduct(var);
+    basetype = var->basetype;
+    if(basetype->subsort == NC_OPAQUE)
         return delimitOpaqueVar(compiler,var,offsetp);
 
-    offset = *offsetp;
-
-#ifdef DELIMIT
-    var->data.vardata.memory = offset;
-#endif
-
-    truetype = var->basetype;    
+    truetype = basetype;
     if(truetype->subsort == NC_ENUM)
-        truetype = var->basetype->basetype;
+        truetype = basetype->basetype;
 
+    offset = *offsetp;
     tid = truetype->subsort;
     typesize = NCD4_typesize(tid);
     if(tid != NC_STRING) {
@@ -350,13 +262,11 @@ delimitAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
             /* Get string count */
             count = GETCOUNTER(offset);
             SKIPCOUNTER(offset);
+  	    if(compiler->swap) swapinline64(&count);
             /* skip count bytes */
             offset += count;
         }
     }
-#ifdef DELIMIT
-    var->data.vardata.size = (d4size_t)(offset - var->data.vardata.memory);
-#endif
     *offsetp = offset;
     return THROW(ret);
 }
@@ -371,48 +281,45 @@ delimitOpaqueVar(NCD4meta* compiler,  NCD4node* var, void** offsetp)
     d4size_t dimproduct = NCD4_dimproduct(var);
 
     offset = *offsetp;
-#ifdef DELIMIT
-    var->data.vardata.memory = offset;
-#endif
     for(i=0;i<dimproduct;i++) {
         /* Walk the instances */
         count = GETCOUNTER(offset);
         SKIPCOUNTER(offset);
+        if(compiler->swap) swapinline64(&count);
         offset += count;
     }
-#ifdef DELIMIT
-    var->data.vardata.size = (d4size_t)(offset - var->data.vardata.memory);
-#endif
     *offsetp = offset;
     return THROW(ret);
 }
 
 static int
-delimitStructArray(NCD4meta* compiler, NCD4node* var,  void** offsetp)
+delimitStructArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
 {
     int ret = NC_NOERR;
     void* offset;
     d4size_t i;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    d4size_t dimproduct;
+    NCD4node* type;
+
+   if(varortype->sort == NCD4_VAR) {
+	dimproduct = NCD4_dimproduct(varortype);	
+	type = varortype->basetype;
+   } else {
+	dimproduct = 1;
+	type = varortype;	
+   }
 
     offset = *offsetp;
-#ifdef DELIMIT
-    var->data.vardata.memory = offset;
-    var->data.vardata.size = 0;
-#endif
     for(i=0;i<dimproduct;i++) {
-        if((ret=delimitStruct(compiler,var,&offset))) goto done;
+        if((ret=delimitStruct(compiler,type,&offset))) goto done;
     }
-#ifdef DELIMIT
-    var->data.vardata.size = (offset - var->data.vardata.memory);
-#endif
     *offsetp = offset;
 done:
     return THROW(ret);
 }
 
 static int
-delimitStruct(NCD4meta* compiler, NCD4node* var, void** offsetp)
+delimitStruct(NCD4meta* compiler, NCD4node* basetype, void** offsetp)
 {
     int ret = NC_NOERR;
     int i;
@@ -420,8 +327,8 @@ delimitStruct(NCD4meta* compiler, NCD4node* var, void** offsetp)
 
     offset = *offsetp;
     /* The fields are associated with the basetype struct */
-    for(i=0;i<nclistlength(var->basetype->vars);i++) {
-        NCD4node* field = (NCD4node*)nclistget(var->basetype->vars,i);
+    for(i=0;i<nclistlength(basetype->vars);i++) {
+        NCD4node* field = (NCD4node*)nclistget(basetype->vars,i);
         switch (field->subsort) {
 	default:
             if((ret=delimitAtomicVar(compiler,field,&offset))) goto done;
@@ -440,555 +347,309 @@ done:
 }
 
 static int
-delimitSeqArray(NCD4meta* compiler, NCD4node* var,  void** offsetp)
+delimitSeqArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
 {
     int ret = NC_NOERR;
     void* offset;
     d4size_t i;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    d4size_t dimproduct;
+    NCD4node* type;
+
+    if(varortype->sort == NCD4_VAR) {
+	dimproduct = NCD4_dimproduct(varortype);	
+	type = varortype->basetype;
+    } else {
+	dimproduct = 1;
+	type = varortype;	
+    }
 
     offset = *offsetp;
-#ifdef DELIMIT
-    var->data.vardata.memory = offset;
-#endif
     for(i=0;i<dimproduct;i++) {
-        /* Getsize, possibly recursively, the single seq pointed to by offset*/
-        if((ret=delimitSeq(compiler,var,&offset))) goto done;
+        if((ret=delimitSeq(compiler,type,&offset))) goto done;
     }
-#ifdef DELIMIT
-    var->data.vardata.size = (offset - var->data.vardata.memory);
-#endif
     *offsetp = offset;
 done:
     return THROW(ret);
 }
 
 static int
-delimitSeq(NCD4meta* compiler, NCD4node* var, void** offsetp)
+delimitSeq(NCD4meta* compiler, NCD4node* vlentype, void** offsetp)
 {
     int ret = NC_NOERR;
     int i;
     void* offset;
     d4size_t recordcount;
+    NCD4node* recordtype;
+
+    /* The true type of the record is the basetype of the vlen,
+       where the vlen type is the basetype of the var
+     */ 
+    assert(vlentype->subsort == NC_VLEN);
+    recordtype = vlentype->basetype;
 
     offset = *offsetp;
 
-    /* Get and getsize the record count */
+    /* Get he record count */
     recordcount = GETCOUNTER(offset);
     SKIPCOUNTER(offset);
+    if(compiler->swap) swapinline64(&recordcount);
 
     for(i=0;i<recordcount;i++) {
-        /* We can treat each record like a structure instance */
-        if((ret=delimitStruct(compiler,var,&offset))) goto done;
-    }
-    *offsetp = offset;
-done:
-    return THROW(ret);
-}
-
-/**************************************************/
-
-int
-NCD4_fixstr(NCD4meta* compiler, NCD4node* var)
-{
-    int i,ret = NC_NOERR;
-    d4size_t dimproduct = NCD4_dimproduct(var);
-    void* offset = var->data.topvardata.memory;
-    char** p = (char**)offset;
-
-    ASSERT((ISTOPLEVEL(var)));
-
-    offset = var->data.topvardata.memory;
-
-    if(compiler->blobs == NULL)
-        compiler->blobs = nclistnew();
-
-    for(i=0;i<dimproduct;i++) {
-        char* q;
-	d4size_t count;
-        /* Get string count (remember, it is already properly swapped) */
-        count = GETCOUNTER(offset);
-        SKIPCOUNTER(offset);
-        /* Transfer out of band */
-        q = (char*)malloc(count+1);
-        memcpy(q,offset,count);
-        q[count] = '\0';
-        PUSH(compiler->blobs,q);
-        /* Write the pointer to the string */
-        *p++ = q;
-        /* skip to next string */
-        offset += count;
-    }
-    /* Now compress out any extra space */
-    {
-        /* we compress from the top-level variable */
-        NCD4node* top = toplevel(var);
-        char* dst = (char*)p;
-        char* src = (char*)offset;
-        ptrdiff_t delta = (src - dst); /* remember, we are moving down */
-        ptrdiff_t used = (dst - (char*)top->data.topvardata.memory);
-        size_t tomove = (size_t)(top->data.topvardata.size - used);
-        if(tomove > 0)
-            d4memmove(dst,src,tomove);
-        /* fix up the variable size */
-        top->data.topvardata.size -= delta;
-    }
-    return THROW(ret);
-}
-
-int
-NCD4_fixopfixed(NCD4meta* compiler, NCD4node* var)
-{
-    int ret = NC_NOERR;
-    int i;
-    d4size_t count;
-    d4size_t dimproduct = NCD4_dimproduct(var);
-    d4size_t opaquesize = var->basetype->opaque.size;
-    void* offset;
-    void* q;
-
-    ASSERT((ISTOPLEVEL(var)));
-    offset = var->data.topvardata.memory;
-    q = offset;
-    for(i=0;i<dimproduct;i++) {
-        /* Get opaque count */
-        count = GETCOUNTER(offset);
-        SKIPCOUNTER(offset);
-        /* verify that it is the correct size */
-        if(count != opaquesize) {
-            FAIL(NC_EVARSIZE,"Expected opaque size to be %lld; found %lld",opaquesize,count);
-        }
-        /* Compress out */
-        memcpy(q,offset,count);
-        q += count;
-        /* skip to next opaque */
-        offset += count;
-    }
-    /* Now compress out any extra space out of the variable*/
-    {
-        /* we compress from the top-level variable */
-        NCD4node* top = toplevel(var);
-        char* dst = (char*)q;
-        char* src = (char*)offset;
-        ptrdiff_t delta = (src - dst);
-        ptrdiff_t used = (dst - (char*)top->data.topvardata.memory);
-        size_t tomove = (size_t)(top->data.topvardata.size - used);
-        if(tomove > 0)
-            d4memmove(dst,src,tomove);
-        /* fix up the variable size */
-        top->data.topvardata.size -= delta;
-    }
-done:
-    return THROW(ret);
-}
-
-/*
-Move a dap4 variable length opaque out of band.
-This is very tricky because we need to replace each
-opaque (plus its count) with an instance of nc_vlen_t.
-But the total size of the opaque might be less than
-sizeof(nc_vlen_t). In this case, we have to make
-room in the variable to hold the vlens. There is one
-more complication: it might be that any single opaque
-instance is too small, but the aggregate set of opaques
-is big enough (because some opaque instances are large).
-In this case, we can, with some care, overwrite the opaque
-data with the necessary vlens. For simplicity, we start
-by separately allocating the vlens and then fiddle with the
-variable's data space in order to store those vlens.
-Ugh!
-*/
-
-int
-NCD4_fixopvar(NCD4meta* compiler, NCD4node* var)
-{
-    int ret = NC_NOERR;
-    d4size_t i;
-    unsigned long long count;
-    nc_vlen_t* vlens;
-    ptrdiff_t needed, totalsize;
-    size_t vlenspace;
-    NCD4node* top;
-    d4size_t dimproduct = NCD4_dimproduct(var);
-    void* offset;
-
-    ASSERT((ISTOPLEVEL(var)));
-    offset = var->data.topvardata.memory;
-
-    /* We will store the nc_vlen_t instances temporarily in
-       a separate chunk of memory
-    */
-    vlenspace = (dimproduct*sizeof(nc_vlen_t));
-    vlens = (nc_vlen_t*)malloc(vlenspace);
-    if(vlens == NULL) {
-        FAIL(NC_ENOMEM,"out of space");
-    }
-
-    /* Make a pass to move the opaques and to create the vlens for them */
-    for(i=0;i<dimproduct;i++) {
-        char* q;
-        /* Get opaque count */
-        count = GETCOUNTER(offset);
-        SKIPCOUNTER(offset);
-        /* Transfer out of band */
-        q = (char*)malloc(count);
-        memcpy(q,offset,count);
-        PUSH(compiler->blobs,q);
-        vlens[i].len = (size_t)count;
-        vlens[i].p = q;
-        /* skip to next opaque */
-        offset += count;
-    }
-    /* How much space to do have inline to work with? */
-    totalsize = (offset - var->data.topvardata.memory);
-    /* Do we have enough room to store the vlens inline? */
-    needed = vlenspace - totalsize;
-    top = toplevel(var); /* may need to reallocate */
-    if((ret=resize(compiler,var,needed,top->data.topvardata.memory+vlenspace,&offset))) goto done;
-    /* Move inline */
-    d4memmove(var->data.topvardata.memory,vlens,vlenspace);
-done:
-    return THROW(ret);
-}
-
-/* Locate the top-level variable containing this field or var */
-static NCD4node*
-toplevel(NCD4node* field)
-{
-    NCD4node* top = field;
-    while(top->container->sort != NCD4_GROUP)
-        top = top->container;
-    return top;
-}
-
-/**************************************************/
-
-/* 
-Goal here is to do a depth first search
-for Sequence vars/fields. 
-For each instance of such, we oob its records,
-and replace with a single nc_vlen_t instance.
-As we unwind the recursion, we to this for intermediate
-sequence typed fields.
-*/
-
-int
-NCD4_fixsequences(NCD4meta* compiler, NCD4node* cmpd)
-{
-    int ret = NC_NOERR;
-    void* offset;
-
-    ASSERT((ISTOPLEVEL(cmpd)));
-    offset = cmpd->data.topvardata.memory;
-    ret = fixseqWalk(compiler,cmpd,cmpd,&offset);
-    return THROW(ret);
-}
-
-/*
-Do depth first search lookinng for sequence typed fields.
-We will change them as we unwind the recursion.
-*/
-static int
-fixseqWalk(NCD4meta* compiler, NCD4node* top, NCD4node* cmpd, void** offsetp)
-{
-    int i, ret = NC_NOERR;
-    void* offset = *offsetp;
-    void* saveoffset = offset;
-
-    /* Search the fields looking for those which transitively
-       have sequences (remember: the fields are attached to the type).
-       We also need to capture the offset of the true start of the sequence
-       instance.
-    */
-    if(cmpd->subsort == NC_SEQ && (cmpd->data.flags & LEAFSEQ) == LEAFSEQ) {
-	/* Short circuit the case of a leaf seq => no oobs*/
-        if((ret=fixseqSeq(compiler,top,cmpd,&offset))) goto done;
-    } else for(i=0;i<nclistlength(cmpd->basetype->vars);i++) {
-	int r;
-	NCD4node* field = (NCD4node*)nclistget(cmpd->basetype->vars,i);
-	/* walk down to the innermost sequence: one that has no contained sequence */
-	switch (field->subsort) {
-	case NC_SEQ: {
-	        /* Extract the record count */
-                d4size_t recno = GETCOUNTER(offset);
-                SKIPCOUNTER(offset);
-	        /* Fix each record */
-	        for(r=0;r<recno;r++) {
-	            if((ret=fixseqWalk(compiler,top,field,&offset))) goto done;
-	        }
-	    } break;
-	case NC_STRUCT: /* recurse*/
-	    if((field->data.flags & HASSEQ)) {
-	        if((ret=fixseqWalk(compiler,top,field,&offset))) goto done;
-	    } else
-	        offset += computeInstanceSize(compiler,field,HASSEQ,&offset);
-	    break;
+	switch (recordtype->subsort) {
+        case NC_STRUCT:
+            if((ret=delimitStructArray(compiler,recordtype,&offset))) goto done;
+            break;
+        case NC_SEQ:
+            if((ret=delimitSeqArray(compiler,recordtype,&offset))) goto done;
+            break;
 	default:
-	    offset += computeInstanceSize(compiler,field,HASSEQ,&offset);
-	    break;
+            if((ret=delimitAtomicVar(compiler,recordtype,&offset))) goto done;
+            break;
 	}
-        if(cmpd->subsort == NC_SEQ) {
-	    offset = saveoffset;
-	    /* If we get here, we know that all inner sequences have been fixed */
-            if((ret=fixseqSeq(compiler,top,cmpd,&offset))) goto done;
-        }
     }
     *offsetp = offset;
 done:
     return THROW(ret);
 }
 
+/**************************************************/
 /*
-We have a sequence that is a leaf sequence or whose
-contained sequences have been fixed.
+Walk the var's data to get to the count'th instance.
+For effiency, it can be supplied with a previous case.
+Assumes it is called after byte swapping and offsetting.
 */
-static int
-fixseqSeq(NCD4meta* compiler, NCD4node* top, NCD4node* var, void** offsetp)
+
+int 
+NCD4_moveto(NCD4node* var, off_t count, void* prevoffset, off_t prevcount, void** offsetp)
 {
-    int i, ret = NC_NOERR;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    int ret = NC_NOERR;
     void* offset;
-    nc_vlen_t* vlens;
-    size_t vlensize, saveseq0, seqsize, recordcount, origspace;
-    void* newseqdata;
-    ptrdiff_t needed;
-    void* sequence0;
-    void* seqdata;
-    void* nextseq;
-    void* dst;
-    void* src;
-   
-    /* Allocate the vlens, 1 per sequence instance */
-    vlensize = dimproduct * sizeof(nc_vlen_t);
-    vlens = (nc_vlen_t*) malloc(vlensize);
-    if(vlens == NULL) {FAIL(NC_ENOMEM,"out of memory");}
+    void* startoffset = NULL;
+    off_t startcount = 0;
+    if(prevoffset == NULL) {
+	startoffset = var->data.dap4data.memory;
+	startcount = 0;
+    } else {
+	startoffset = prevoffset;
+	startcount = prevcount;
+    }
+    while(startcount < count) {
+	/* Walk an instance */
+    }    
+    ASSERT((ISTOPLEVEL(topvar)));
+    topvar->data.dap4data.memory = offset;
+    if(topvar->sort == NCD4_VAR) {
+	switch (topvar->subsort) {
+        case NC_STRUCT:
+            if((ret=delimitStructArray(compiler,topvar,&offset))) goto done;
+            break;
+        case NC_SEQ:
+            if((ret=delimitSeqArray(compiler,topvar,&offset))) goto done;
+            break;
+	default:
+            if((ret=delimitAtomicVar(compiler,topvar,&offset))) goto done;
+            break;
+	}
+    }
+    /* Track the variable size (in the dap4 data) but do not include
+       any checksum */
+    topvar->data.dap4data.size = (d4size_t)(offset - *offsetp);
+    /* extract the dap4 data checksum, if present */
+    if(compiler->checksummode != NCD4_CSUM_NONE) {
+	union ATOMICS csum;
+        memcpy(csum.u8,offset,CHECKSUMSIZE);
+        topvar->data.remotechecksum = csum.u32[0];
+	if(compiler->swap) swapinline32(&topvar->data.remotechecksum);
+        offset += CHECKSUMSIZE;
+    }
+    *offsetp = offset;
+done:
+    return THROW(ret);
+}
+
+/* Includes opaque and enum */
+static int
+moveAtomicVar(NCD4meta* compiler, NCD4node* var, void** offsetp)
+{
+    int ret = NC_NOERR;
+    void* offset;
+    int typesize;
+    d4size_t i;
+    d4size_t dimproduct;
+    nc_type tid;
+    NCD4node* basetype;
+    NCD4node* truetype;
+
+if(var->sort != NCD4_VAR) {
+int x = 0;
+}
+    assert(var->sort == NCD4_VAR);
+    dimproduct = NCD4_dimproduct(var);
+    basetype = var->basetype;
+    if(basetype->subsort == NC_OPAQUE)
+        return moveOpaqueVar(compiler,var,offsetp);
+
+    truetype = basetype;
+    if(truetype->subsort == NC_ENUM)
+        truetype = basetype->basetype;
 
     offset = *offsetp;
-    sequence0 = offset; /* sequence0 is start of the vector of sequences */
-    seqdata = sequence0; /* seqdata is start of the ith sequence in vector */
-    for(i=0;i<dimproduct;i++) {
-        /* Compute the offset to the next sequence instance */
-	nextseq = seqdata;
-        seqsize = computeSequenceSize(compiler,var->basetype,&nextseq);
-        assert((nextseq - seqdata) == (seqsize + COUNTERSIZE));
-        recordcount = GETCOUNTER(seqdata); /* get the record count */
-        SKIPCOUNTER(seqdata); /* move to start of actual record data */
-        /* OOB the records */
-        newseqdata = malloc(seqsize);
-        if(newseqdata == NULL) {FAIL(NC_ENOMEM,"out of memory");}
-	PUSH(compiler->blobs,newseqdata);
-        /* move the complete sequence (minus the count) to newseqdata */
-        memcpy(newseqdata,seqdata,seqsize);
-        /* construct a vlen to cover this oob record */
-	vlens[i].len = recordcount;
-	vlens[i].p = newseqdata;
-	seqdata = nextseq;
+    tid = truetype->subsort;
+    typesize = NCD4_typesize(tid);
+    if(tid != NC_STRING) {
+        offset += (typesize*dimproduct);
+    } else if(tid == NC_STRING) { /* walk the counts */
+        unsigned long long count;
+        for(i=0;i<dimproduct;i++) {
+            /* Get string count */
+            count = GETCOUNTER(offset);
+            SKIPCOUNTER(offset);
+  	    if(compiler->swap) swapinline64(&count);
+            /* skip count bytes */
+            offset += count;
+        }
     }
-    /* All of the sequences have been moved out-of-band */
-    /* How much do we need to resize the top variable to accomodate
-       the vlens (1 per sequence)? */
-    /* Needed space is vlensize - |original space for all sequences| */
-    origspace = seqdata - sequence0; /* Does not include checksum */
-    needed = vlensize - origspace;
-    /* The start of the post-vlens space is this: */
-    dst = sequence0 + vlensize;
-    /* The start of the space to move is the start of sequence[0] */
-    src = seqdata;
-    /* Adjust top variable space as needed to make room or to compress */
-    /* convert needed pointers to offset wrt top->data.topvardata.memory */
-    saveseq0 = (sequence0 - top->data.topvardata.memory);
-    if((ret=resize(compiler,top,needed,dst,src))) goto done;
-    /* reconstitute saved ptrs */
-    sequence0 = (saveseq0 + top->data.topvardata.memory);
-    /* We want to move our vlens into the space formerly occupied
-       by our sequence instances */
-    memcpy(sequence0,vlens,vlensize);
-    /* offset should point past the vector of sequences (now vlens) */
-    offset = sequence0 + vlensize;
     *offsetp = offset;
-    /* finally, mark this variable has having all oob sequences */
-    var->data.flags &= ~HASSEQ;
+    return THROW(ret);
+}
+
+static int
+moveOpaqueVar(NCD4meta* compiler,  NCD4node* var, void** offsetp)
+{
+    int ret = NC_NOERR;
+    void* offset;
+    d4size_t i;
+    unsigned long long count;
+    d4size_t dimproduct = NCD4_dimproduct(var);
+
+    offset = *offsetp;
+    for(i=0;i<dimproduct;i++) {
+        /* Walk the instances */
+        count = GETCOUNTER(offset);
+        SKIPCOUNTER(offset);
+        if(compiler->swap) swapinline64(&count);
+        offset += count;
+    }
+    *offsetp = offset;
+    return THROW(ret);
+}
+
+static int
+moveStructArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
+{
+    int ret = NC_NOERR;
+    void* offset;
+    d4size_t i;
+    d4size_t dimproduct;
+    NCD4node* type;
+
+   if(varortype->sort == NCD4_VAR) {
+	dimproduct = NCD4_dimproduct(varortype);	
+	type = varortype->basetype;
+   } else {
+	dimproduct = 1;
+	type = varortype;	
+   }
+
+    offset = *offsetp;
+    for(i=0;i<dimproduct;i++) {
+        if((ret=moveStruct(compiler,type,&offset))) goto done;
+    }
+    *offsetp = offset;
 done:
     return THROW(ret);
 }
 
 static int
-resize(NCD4meta* compiler, NCD4node* top,
-     ptrdiff_t needed,
-     void* dst, /* pointer to the start of the space to be overwritten */
-     void* src /* in: pointer to the start of the data to move up or down */
-     )
+moveStruct(NCD4meta* compiler, NCD4node* basetype, void** offsetp)
 {
     int ret = NC_NOERR;
-    ptrdiff_t delta;
+    int i;
+    void* offset;
 
-    ASSERT((ISTOPLEVEL(top)));
-
-    if(needed > 0) { /* need more space than we have */
-        void* newdata;
-        /* Need to make room by reallocating top */
-        /* Relativize dst */
-        ptrdiff_t off = src - top->data.topvardata.memory;
-        newdata = malloc(top->data.topvardata.size+needed);
-        if(newdata == NULL) {
-            FAIL(NC_ENOMEM,"out of space");
+    offset = *offsetp;
+    /* The fields are associated with the basetype struct */
+    for(i=0;i<nclistlength(basetype->vars);i++) {
+        NCD4node* field = (NCD4node*)nclistget(basetype->vars,i);
+        switch (field->subsort) {
+	default:
+            if((ret=moveAtomicVar(compiler,field,&offset))) goto done;
+            break;
+        case NC_STRUCT: /* recurse */
+            if((ret=moveStructArray(compiler,field,&offset))) goto done;
+            break;
+        case NC_SEQ:
+            if((ret=moveSeqArray(compiler,field,&offset))) goto done;
+            break;
         }
-        top->data.topvardata.memory = newdata;
-        top->data.topvardata.size += needed;
-        /* Make src be absolute again */
-        src = (top->data.topvardata.memory + off);
-	delta = needed;
-        needed = 0;
-    } else if(needed < 0) { /* Have too much space */
-	assert((src - dst) >= 0);
-        ptrdiff_t used = (((char*)dst) - (char*)top->data.topvardata.memory);
-        ptrdiff_t tomove = (top->data.topvardata.size - used);
-        if(tomove > 0)
-            d4memmove(dst,src,tomove);
-        delta = dst - src; /* empty space compressed out */
     }
-    /* Adjust the top size (delta might be negative or zero)*/
-    top->data.topvardata.size += delta;
+    *offsetp = offset;
 done:
     return THROW(ret);
 }
 
-/*
-Given a pointer to the start of an object
-(var or field) compute its actual size
-as represented in the dap data, including
-dimensions.
-Notes:
-1. this may differ from the type size.
-2. flags determine what has been oob'd out.
-3. Dimproduct is applied
-*/
-
-static d4size_t
-computeInstanceSize(NCD4meta* builder, NCD4node* var, int flags, void** offsetp)
+static int
+moveSeqArray(NCD4meta* compiler, NCD4node* varortype,  void** offsetp)
 {
-    int i;
-    unsigned long long size = 0;
-    NCD4node* type = (var->sort == NCD4_TYPE ? var : var->basetype);
-    void* offset = *offsetp;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    int ret = NC_NOERR;
+    void* offset;
+    d4size_t i;
+    d4size_t dimproduct;
+    NCD4node* type;
 
-    switch (type->subsort) {
-    default: /* Fixed size atomic */
-	size = NCD4_typesize(type->subsort);
-	size *= dimproduct;
-        offset += size;
-	break;
-    case NC_STRING:
-	if((flags & HASSTR) == 0) {/* oob'd out */
-            size = sizeof(char*);
-	    size *= dimproduct;
-	    offset += size;
-	} else {
-	    int i;
-	    for(i=0;i<dimproduct;i++) {
- 	        d4size_t count = GETCOUNTER(offset);
-	        SKIPCOUNTER(offset);
-	        offset += count;
-		size += COUNTSIZE+count;
-	    }
-	}
-  	break;
-    case NC_OPAQUE:
-	if((flags & (HASOPFIX|HASOPVAR)) == 0) {/* oob'd out */
-            size = (var->opaque.size == 0 ? sizeof(nc_vlen_t) : var->opaque.size);
-	    size *= dimproduct;
-	    offset += size;
-	} else {
-	    for(i=0;i<dimproduct;i++) {
- 	        d4size_t count = GETCOUNTER(offset);
-	        SKIPCOUNTER(offset);
-	        offset += count;
-		size += COUNTSIZE+count;
-	    }
-	}
-  	break;
-    case NC_ENUM:
-	size = NCD4_typesize(type->basetype->subsort);
-	size *= dimproduct;
-	offset += size;
-        break;
-    case NC_STRUCT:
-        for(i=0;i<nclistlength(var->vars);i++) {
-            NCD4node* field = (NCD4node*)nclistget(var->vars,i);
-	    d4size_t fieldsize = 0;	
-	    void* fieldoffset = offset;
-	    fieldsize = computeInstanceSize(builder,field,flags,&fieldoffset);
-	    size += fieldsize;
-	    offset = fieldoffset;
-        }
-        break;
-    case NC_SEQ:
-	if((flags & HASSEQ) == 0) {/* oob'd out */
-            size = sizeof(nc_vlen_t);
-	    size *= dimproduct;
-	    offset += size;
-	} else {
-	    int j,k;
-	    d4size_t nrecords;
-	    d4size_t seqsize = 0;
-	    void* seqpos = offset;
-	    for(i=0;i<dimproduct;i++) {	    
- 	        nrecords = GETCOUNTER(seqpos);
-	        SKIPCOUNTER(seqpos);
-	        seqsize += COUNTSIZE;
-	        for(j=0;j<nrecords;j++) {
-                    for(k=0;k<nclistlength(type->vars);k++) {
-			NCD4node* field = (NCD4node*)nclistget(type->vars,k);
-		        d4size_t fieldsize = 0;	
-	                void* fieldoffset = seqpos;
-	                fieldsize = computeInstanceSize(builder,field,flags,&fieldoffset);
-	                seqsize += fieldsize;
-	                seqpos = fieldoffset;
-		    }
-		}
-	    }
-	    size = seqsize;
-	    offset = seqpos;
-        }
-	break;
+    if(varortype->sort == NCD4_VAR) {
+	dimproduct = NCD4_dimproduct(varortype);	
+	type = varortype->basetype;
+    } else {
+	dimproduct = 1;
+	type = varortype;	
     }
-    assert((offset - *offsetp) == size);
+
+    offset = *offsetp;
+    for(i=0;i<dimproduct;i++) {
+        if((ret=moveSeq(compiler,type,&offset))) goto done;
+    }
     *offsetp = offset;
-    return size;
+done:
+    return THROW(ret);
 }
 
-/*
-Given a pointer to the start of a sequence instance,
-compute its actual size as represented in the dap data.
-Notes:
-1. this may differ from the type size.
-*/
-
-static d4size_t
-computeSequenceSize(NCD4meta* builder, NCD4node* seqtype, void** offsetp)
+static int
+moveSeq(NCD4meta* compiler, NCD4node* vlentype, void** offsetp)
 {
-    int i,j;
-    void* offset = *offsetp;
-    d4size_t seqsize, recordcount;
-    void* seqpos = offset;
-    
-    assert (seqtype->subsort == NC_VLEN);
-    recordcount = GETCOUNTER(seqpos);
-    SKIPCOUNTER(seqpos);
-    seqsize = 0;
+    int ret = NC_NOERR;
+    int i;
+    void* offset;
+    d4size_t recordcount;
+    NCD4node* recordtype;
+
+    /* The true type of the record is the basetype of the vlen,
+       where the vlen type is the basetype of the var
+     */ 
+    assert(vlentype->subsort == NC_VLEN);
+    recordtype = vlentype->basetype;
+
+    offset = *offsetp;
+
+    /* Get he record count */
+    recordcount = GETCOUNTER(offset);
+    SKIPCOUNTER(offset);
+    if(compiler->swap) swapinline64(&recordcount);
+
     for(i=0;i<recordcount;i++) {
-        for(j=0;j<nclistlength(seqtype->vars);j++) {
-	    NCD4node* field = (NCD4node*)nclistget(seqtype->vars,j);
-	    d4size_t fieldsize = 0;	
-	    void* fieldoffset = seqpos;
-	    fieldsize = computeInstanceSize(builder,field,field->data.flags,&fieldoffset);
-	    seqsize += fieldsize;
-	    seqpos = fieldoffset;
+	switch (recordtype->subsort) {
+        case NC_STRUCT:
+            if((ret=moveStructArray(compiler,recordtype,&offset))) goto done;
+            break;
+        case NC_SEQ:
+            if((ret=moveSeqArray(compiler,recordtype,&offset))) goto done;
+            break;
+	default:
+            if((ret=moveAtomicVar(compiler,recordtype,&offset))) goto done;
+            break;
 	}
     }
-    assert((seqpos - offset) == (seqsize + COUNTERSIZE));
-    offset = seqpos;
     *offsetp = offset;
-    return seqsize;
+done:
+    return THROW(ret);
 }

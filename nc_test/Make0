@@ -1,5 +1,5 @@
 # Test c output
-T=tst_small
+T=t
 #CMD=valgrind --leak-check=full
 CMD=gdb --args
 

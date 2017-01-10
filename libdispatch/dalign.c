@@ -1,7 +1,7 @@
-/*********************************************************************
- *   Copyright 1993, UCAR/Unidata
- *   See netcdf/COPYRIGHT file for copying and redistribution conditions.
- *********************************************************************/
+/*
+Copyright 1993, UCAR/Unidata
+See netcdf/COPYRIGHT file for copying and redistribution conditions.
+*/
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * Copyright by The HDF Group.                                               *
@@ -23,17 +23,12 @@ This code is a variantion of the H5detect.c code from HDF5.
 Author: D. Heimbigner 10/7/2008
 */
 #include "config.h"
-#ifndef OFFSETTEST
-#include        "dapincludes.h"
-#else
-#include        <stdlib.h>
-#include        <string.h>
-#include        <assert.h>
-#endif
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
-#include        "dapnc.h"
-#include        "dapdebug.h"
-#include        "dapalign.h"
+#include "netcdf.h"
+#include "ncalign.h"
 
 typedef struct nccalignvlen_t {
     size_t len;
@@ -112,11 +107,7 @@ ncctypealignment(int nctype)
       case NC_VLEN:   index = NCCTYPENCVLEN; break;
       case NC_OPAQUE: index = NCCTYPEUCHAR; break;
       default:
-#ifndef OFFSETTEST
-	PANIC1("nctypealignment: bad type code: %d",nctype);
-#else
 	return 0;
-#endif
     }
     align = &vec[index];
     return align->alignment;

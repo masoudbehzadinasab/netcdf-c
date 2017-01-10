@@ -95,6 +95,7 @@ nclistget(NClist* l, unsigned long index)
   return l->content[index];
 }
 
+/* Insert at position i of l; will overwrite previous value */
 int
 nclistset(NClist* l, unsigned long index, void* elem)
 {

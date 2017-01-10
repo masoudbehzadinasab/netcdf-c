@@ -64,4 +64,6 @@ extern int d4throw(int err);
 extern const char* NCD4_sortname(NCD4sort sort);
 extern const char* NCD4_subsortname(nc_type subsort);
 
+extern int NCD4_debugcopy(NCD4INFO* info);
+
 #endif /*D4DEBUG_H*/

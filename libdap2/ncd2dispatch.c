@@ -5,7 +5,7 @@
 
 #include "dapincludes.h"
 #include "ncd2dispatch.h"
-#include "dapalign.h"
+#include "ncoffsets.h"
 
 #ifdef _MSC_VER
 #include <crtdbg.h>
@@ -189,8 +189,6 @@ NCD2_initialize(void)
     int i;
 
     NCD2_dispatch_table = &NCD2_dispatch_base;
-    /* Local Initialization */
-    compute_nccalignments();
     ncd2initialized = 1;
 #ifdef DEBUG
     /* force logging to go to stderr */

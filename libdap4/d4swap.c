@@ -22,24 +22,14 @@ static int walkStruct(NCD4meta*, NCD4node*, NCD4node*, void** offsetp);
 static int walkSeqArray(NCD4meta*, NCD4node*, NCD4node*, void** offsetp);
 static int walkSeq(NCD4meta*,NCD4node*, NCD4node*, void** offsetp);
 
-#ifdef D4DUMPCSUM
-static unsigned int debugcrc32(unsigned int crc, const void *buf, size_t size)
-{
-    int i;
-    fprintf(stderr,"crc32: ");
-    for(i=0;i<size;i++) {fprintf(stderr,"%02x",((unsigned char*)buf)[i]);}
-    fprintf(stderr,"\n");
-    return NCD4_crc32(crc,buf,size);
-}
-#define CRC32 debugcrc32
-#else
-#define CRC32 NCD4_crc32
-#endif
-
 /**************************************************/
 
+/*
+Assumes that compiler->swap is true; does necessary
+byte swapping.
+*/
 int
-NCD4_serial(NCD4meta* compiler, NClist* topvars)
+NCD4_swapdata(NCD4meta* compiler, NClist* topvars)
 {
     int ret = NC_NOERR;
     int i;
@@ -48,17 +38,17 @@ NCD4_serial(NCD4meta* compiler, NClist* topvars)
     offset = compiler->serial.dap;
     for(i=0;i<nclistlength(topvars);i++) {
 	NCD4node* var = (NCD4node*)nclistget(topvars,i);
-	var->data.topvardata.memory = offset;
+	NCD4node* basetype = var->basetype;
+	var->data.dap4data.memory = offset;
 
 	var->data.remotechecksum = 0;
-	var->data.localchecksum = 0; /* initialize local checksum computation */
 
 	switch (var->subsort) {
 	default:
 	    if((ret=walkAtomicVar(compiler,var,var,&offset))) goto done;
 	    break;
 	case NC_OPAQUE:
-	    /* The only thing we need to do is if((ret=swap the counts */
+	    /* The only thing we need to do is swap the counts */
 	    if((ret=walkOpaqueVar(compiler,var,var,&offset))) goto done;
 	    break;
 	case NC_STRUCT:
@@ -68,7 +58,7 @@ NCD4_serial(NCD4meta* compiler, NClist* topvars)
 	    if((ret=walkSeqArray(compiler,var,var,&offset))) goto done;
 	    break;
 	}
-	var->data.topvardata.size = (d4size_t)(offset - var->data.topvardata.memory);
+	var->data.dap4data.size = (d4size_t)(offset - var->data.dap4data.memory);
 	/* skip checksum, if there is one */
         if(!compiler->serial.nochecksum)
 	    offset += CHECKSUMSIZE;
@@ -83,19 +73,21 @@ walkAtomicVar(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offset
     int ret = NC_NOERR;
     void* offset;
     d4size_t i;
-    nc_type subsort = var->basetype->subsort;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    nc_type subsort;
+    d4size_t dimproduct;
+    NCD4node* basetype;
+
+    basetype = (var->sort == NCD4_TYPE ? var : var->basetype);
+    subsort = basetype->subsort;
+    dimproduct = (var->sort == NCD4_TYPE ? 1 : NCD4_dimproduct(var));
 
     offset = *offsetp;
     if(subsort == NC_ENUM)
 	subsort = var->basetype->basetype->subsort;
-    /* Only need to swap multi-byte integers and floats; but checksum all of them */
+    /* Only need to swap multi-byte integers and floats */
     if(subsort != NC_STRING) {
         int typesize = NCD4_typesize(subsort);
 	d4size_t totalsize = typesize*dimproduct;
-	if(compiler->checksumming) {
-	    topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, totalsize);
-	}
 	if(typesize == 1) {
 	    offset += totalsize;
 	} else { /*(typesize > 1)*/
@@ -115,15 +107,11 @@ walkAtomicVar(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offset
     } else if(subsort == NC_STRING) { /* remaining case; just convert the counts */
 	COUNTERTYPE count;
 	for(i=0;i<dimproduct;i++) {
-	    if(compiler->checksumming)
-	        topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, COUNTERSIZE);
 	    /* Get string count */
 	    if(compiler->swap)
 		swapinline64(offset);
 	    count = GETCOUNTER(offset);
 	    SKIPCOUNTER(offset);
-	    if(compiler->checksumming)
-	        topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, count);
 	    /* skip count bytes */
 	    offset += count;
 	}
@@ -140,18 +128,18 @@ walkOpaqueVar(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offset
     d4size_t i;
     unsigned long long count;
     d4size_t dimproduct = NCD4_dimproduct(var);
+    NCD4node* basetype;
+
+    basetype = (var->sort == NCD4_TYPE ? var : var->basetype);
+    dimproduct = (var->sort == NCD4_TYPE ? 1 : NCD4_dimproduct(var));
 
     offset = *offsetp;
     for(i=0;i<dimproduct;i++) {
-	if(compiler->checksumming)
-	    topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, COUNTERSIZE);
 	/* Get and swap opaque count */
 	if(compiler->swap)
 	    swapinline64(offset);
 	count = GETCOUNTER(offset);
 	SKIPCOUNTER(offset);
-        if(compiler->checksumming)
-	    topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, count);
 	offset += count;
     }
     *offsetp = offset;
@@ -165,11 +153,12 @@ walkStructArray(NCD4meta* compiler, NCD4node* topvar, NCD4node* var,  void** off
     void* offset;
     d4size_t i;
     d4size_t dimproduct = NCD4_dimproduct(var);
+    NCD4node* basetype = var->basetype;
 
     offset = *offsetp;
     for(i=0;i<dimproduct;i++) {
 	/* Swap, possibly recursively, the single struct pointed to by offset*/
-	if((ret=walkStruct(compiler,topvar,var,&offset))) goto done;
+	if((ret=walkStruct(compiler,topvar,basetype,&offset))) goto done;
     }
     *offsetp = offset;
 done:
@@ -177,21 +166,24 @@ done:
 }
 
 static int
-walkStruct(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offsetp)
+walkStruct(NCD4meta* compiler, NCD4node* topvar, NCD4node* structtype, void** offsetp)
 {
     int ret = NC_NOERR;
     int i;
     void* offset;
-    NCD4node* basetype = var->basetype;
 
     offset = *offsetp;
-    for(i=0;i<nclistlength(basetype->vars);i++) {
-	NCD4node* field = (NCD4node*)nclistget(basetype->vars,i);
+    for(i=0;i<nclistlength(structtype->vars);i++) {
+	NCD4node* field = (NCD4node*)nclistget(structtype->vars,i);
 	NCD4node* fieldbase = field->basetype;
         switch (fieldbase->subsort) {
         default:
 	    if((ret=walkAtomicVar(compiler,topvar,field,&offset))) goto done;
   	    break;
+	case NC_OPAQUE:
+	    /* The only thing we need to do is swap the counts */
+	    if((ret=walkOpaqueVar(compiler,topvar,field,&offset))) goto done;
+	    break;
         case NC_STRUCT:
 	    if((ret=walkStructArray(compiler,topvar,field,&offset))) goto done;
   	    break;
@@ -206,46 +198,67 @@ done:
 }
 
 static int
-walkSeqArray(NCD4meta* compiler, NCD4node* topvar, NCD4node* var,	 void** offsetp)
+walkSeqArray(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offsetp)
 {
     int ret = NC_NOERR;
     void* offset;
     d4size_t i;
-    d4size_t dimproduct = NCD4_dimproduct(var);
+    d4size_t dimproduct;
+    NCD4node* seqtype;
+
+    assert(var->sort == NCD4_VAR);
+    dimproduct = NCD4_dimproduct(var);
+    seqtype = var->basetype;
 
     offset = *offsetp;
     for(i=0;i<dimproduct;i++) {
 	/* Swap, possibly recursively, the single seq pointed to by offset*/
-	if((ret=walkSeq(compiler,topvar,var,&offset))) goto done;
+	if((ret=walkSeq(compiler,topvar,seqtype,&offset))) goto done;
     }
     *offsetp = offset;
 done:
     return THROW(ret);
 }
 
+/*
+Remember that the base type of var is a vlen.
+*/
 static int
-walkSeq(NCD4meta* compiler, NCD4node* topvar, NCD4node* var, void** offsetp)
+walkSeq(NCD4meta* compiler, NCD4node* topvar, NCD4node* vlentype, void** offsetp)
 {
     int ret = NC_NOERR;
     int i;
     void* offset;
     d4size_t recordcount;
+    NCD4node* basetype;
 
     offset = *offsetp;
 
     /* process the record count */
-    if(compiler->checksumming)
-        topvar->data.localchecksum = CRC32(topvar->data.localchecksum, offset, COUNTERSIZE);
-	
-    if(compiler->swap)
-        swapinline64(offset);
-
     recordcount = GETCOUNTER(offset);
     SKIPCOUNTER(offset);
+    if(compiler->swap)
+        swapinline64(&recordcount);
+
+    basetype = vlentype->basetype; /* This may be of any type potentially */
+    assert(basetype->sort = NCD4_TYPE);
 
     for(i=0;i<recordcount;i++) {
-	/* We can treat each record like a structure instance */
-	if((ret=walkStruct(compiler,topvar,var,&offset))) goto done;
+        switch(basetype->subsort) {
+	default: /* atomic basetype */
+	    if((ret=walkAtomicVar(compiler,topvar,basetype,&offset))) goto done;
+	    break;
+	case NC_OPAQUE:
+	    if((ret=walkOpaqueVar(compiler,topvar,basetype,&offset))) goto done;
+	    break;
+	case NC_STRUCT:
+	    /* We can treat each record like a structure instance */
+	    if((ret=walkStruct(compiler,topvar,basetype,&offset))) goto done;
+	    break;
+	case NC_SEQ:
+	    if((ret=walkSeq(compiler,topvar,basetype,&offset))) goto done;
+	    break;
+	}
     }
     *offsetp = offset;
 done:

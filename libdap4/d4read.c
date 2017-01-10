@@ -13,7 +13,8 @@ NCD4_readDMR(NCD4INFO* state)
     long lastmodified = -1;
 
     stat = readpacket(state,state->uri,state->curl->packet,NCD4_DMR,&lastmodified);
-    if(stat == NC_NOERR) state->data.dmrlastmodified = lastmodified;
+    if(stat == NC_NOERR)
+	state->data.dmrlastmodified = lastmodified;
     return THROW(stat);
 }
 

@@ -34,6 +34,7 @@ for f in $F ; do
     fi
 done
 
-echo "*** Pass"
+finish
+
 exit 0
 

@@ -13,7 +13,7 @@
 static char SccsId[] = "$Id: ncgen.y,v 1.42 2010/05/18 21:32:46 dmh Exp $";
 */
 #include        "includes.h"
-#include        "offsets.h"
+#include        "ncoffsets.h"
 #include        "ncgeny.h"
 #include        "ncgen.h"
 

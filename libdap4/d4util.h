@@ -69,7 +69,7 @@ typedef struct D4blob {d4size_t size; void* memory;} D4blob;
 #define HASOPFIX (4) /* transitively contains fixed size opaques */
 #define HASOPVAR (8) /* transitively contains variable size opaques */
 #define LEAFSEQ (16) /* mark leaf sequences */
-
+#define HASANY   (HASNIL|HASSEQ|HASSTR|HASOPTFIX|HASOPVAR)
 /***************************************************/
 
 extern int ncd4__testurl(const char* parth, char** basename);

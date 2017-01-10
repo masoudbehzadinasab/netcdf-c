@@ -29,13 +29,16 @@ d4data.c \
 d4file.c \
 d4parser.c \
 d4meta.c \
+d4varx.c \
 d4dump.c \
-d4serial.c \
+d4swap.c \
 d4chunk.c \
 d4printer.c \
 d4read.c \
 d4http.c \
 d4util.c \
+d4odom.c \
+d4cvt.c \
 d4debug.c \
 d4bytes.c \
 ncd4dispatch.c \

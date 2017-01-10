@@ -7,6 +7,9 @@
   <Dimensions>
     <Dimension name="dim1" size="5"/>
   </Dimensions>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
   <Groups>
     <Group name="g">
       <Dimensions>

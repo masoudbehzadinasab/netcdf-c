@@ -1582,33 +1582,20 @@ nc_inq_type(int ncid, nc_type xtype, char *name, size_t *size)
 
    /* Do a quick triage on xtype */
    if(xtype <= NC_NAT) return NC_EBADTYPE;
-   /* See if the ncid is valid */
+   /* For compatibility, we need to allow inq about
+      atomic types, even if ncid is ill-defined */
+   if(xtype <= ATOMICTYPEMAX4) {
+      if(name) strncpy(name,NC_atomictypename(xtype),NC_MAX_NAME);
+      if(size) *size = NC_atomictypelen(xtype);
+      return NC_NOERR;
+   }
+   /* Apparently asking about a user defined type, so we need
+      a valid ncid */
    stat = NC_check_id(ncid, &ncp);
-   if(stat != NC_NOERR) { /* bad ncid; do what we can */
-       /* For compatibility, we need to allow inq about
-          atomic types, even if ncid is ill-defined */
-	if(xtype <= ATOMICTYPEMAX4) {
-            if(name) strncpy(name,NC_atomictypename(xtype),NC_MAX_NAME);
-            if(size) *size = NC_atomictypelen(xtype);
-            return NC_NOERR;
-	} else
-	    return NC_EBADTYPE;
-   } else { /* have good ncid */
-      return ncp->dispatch->inq_type(ncid,xtype,name,size);
-   }
-#if 0
-       int maxtype;
-       int format;
-   nc_inq_format(ncid, &format);
-   switch (format) {
-   case NC_FORMAT_NETCDF4_CLASSIC: /*fall thru*/
-   case NC_FORMAT_64BIT_OFFSET: /*fall thru*/
-   case NC_FORMAT_CLASSIC: maxtype = ATOMICTYPEMAX3; break;
-   case NC_FORMAT_NETCDF4: maxtype = ATOMICTYPEMAX4; break;
-   case NC_FORMAT_CDF5: maxtype = ATOMICTYPEMAX5; break;
-   default: return NC_EINVAL;
-   }
-#endif
+   if(stat != NC_NOERR) /* bad ncid */
+      return NC_EBADID;;
+   /* have good ncid */
+   return ncp->dispatch->inq_type(ncid,xtype,name,size);
 }
 
 /**
@@ -1657,9 +1644,12 @@ NC_create(const char *path0, int cmode, size_t initialsz,
    int model = NC_FORMATX_UNDEFINED; /* one of the NC_FORMATX values */
    int isurl = 0;   /* dap or cdmremote or neither */
    int xcmode = 0; /* for implied cmode flags */
-   char* path = strdup(path0); /* in case we need to modify it (e.g. url) */
+   char* path; /* in case we need to modify it (e.g. url) */
 
    TRACE(nc_create);
+   if(path0 == NULL)
+	return NC_EINVAL;
+   path = strdup(path0); /* in case we need to modify it (e.g. url) */
    /* Initialize the dispatch table. The function pointers in the
     * dispatch table will depend on how netCDF was built
     * (with/without netCDF-4, DAP, CDMREMOTE). */

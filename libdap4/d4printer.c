@@ -114,7 +114,8 @@ printNode(D4printer* out, NCD4node* node, int depth)
 	    INDENT(depth); CAT("<Opaque");
 	    ncbytesclear(out->tmp);
 	    printXMLAttributeName(out, "name", node->name);
-	    printXMLAttributeSize(out, "size", node->opaque.size);
+	    if(node->opaque.size > 0)
+	        printXMLAttributeSize(out, "size", node->opaque.size);
 	    CAT("/>");
 	    break;	    
 	case NC_ENUM:
@@ -141,9 +142,8 @@ printNode(D4printer* out, NCD4node* node, int depth)
 	    INDENT(depth); CAT("</Enumeration>");
 	    break;
 	case NC_STRUCT:
-	case NC_SEQ:
 	    INDENT(depth);
-	    CAT((node->subsort == NC_STRUCT?"<Structure":"<Sequence"));
+	    CAT("<Structure");
 	    printXMLAttributeName(out, "name", node->name);
 	    CAT(">\n");
 	    depth++;
@@ -155,11 +155,24 @@ printNode(D4printer* out, NCD4node* node, int depth)
 	    if((ret=printMetaData(out,node,depth))) goto done;
 	    depth--;
 	    INDENT(depth);
-	    CAT((node->subsort == NC_STRUCT?"</Structure>":"</Sequence>"));
+	    CAT("</Structure>");
 	    break;
-	}
-	break;
-
+	case NC_SEQ:
+	    INDENT(depth);
+	    CAT("<Vlen");
+	    printXMLAttributeName(out, "name", node->name);
+	    printXMLAttributeName(out, "type", (fqn=NCD4_makeFQN(node->basetype)));
+	    if(hasMetaData(node)) {
+		CAT(">\n");
+		depth++;
+		if((ret=printMetaData(out,node,depth))) goto done;
+		depth--;
+		INDENT(depth);
+		CAT("</Vlen>");
+	    } else
+	        CAT("/>");
+  	    break;
+        } break;
     case NCD4_VAR: /* Only top-level vars are printed here */
 	if(ISTOPLEVEL(node)) {
   	    if((ret=printVariable(out,node,depth))) goto done;

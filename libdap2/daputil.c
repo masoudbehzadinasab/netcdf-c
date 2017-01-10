@@ -13,13 +13,14 @@
 extern int oc_dumpnode(OClink, OCddsnode);
 
 #include "dapincludes.h"
-#include "dapalign.h"
+#include "ncoffsets.h"
 
 #define LBRACKET '['
 #define RBRACKET ']'
 
 
 static char* repairname(const char* name, const char* badchars);
+static int nccpadding(unsigned long offset, int alignment);
 
 /**************************************************/
 
@@ -809,3 +810,14 @@ dap_getselection(NCURI* uri)
     if(p == NULL) return NULL;
     return strdup(p+1);
 }
+
+/* Compute padding */
+static int
+nccpadding(unsigned long offset, int alignment)
+{
+    int pad,rem;
+    rem = (alignment==0?0:(offset % alignment));
+    pad = (rem==0?0:(alignment - rem));
+    return pad;
+}
+

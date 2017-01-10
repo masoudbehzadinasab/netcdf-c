@@ -5,11 +5,15 @@
    xmlns="http://xml.opendap.org/ns/DAP/4.0#"
    xmlns:dap="http://xml.opendap.org/ns/DAP/4.0#">
   <Types>
-    <Sequence name="x">
+    <Structure name="x_base">
       <Int32 name="x"/>
-    </Sequence>
+    </Structure>
+    <Vlen name="x_t" type="/x_base"/>
   </Types>
   <Variables>
-    <Seq name="x" type="/x"/>
+    <Seq name="x" type="/x_t"/>
   </Variables>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
 </Dataset>

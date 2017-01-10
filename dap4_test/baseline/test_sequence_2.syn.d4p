@@ -8,14 +8,18 @@
     <Dimension name="_Anonymous2" size="2"/>
   </Dimensions>
   <Types>
-    <Sequence name="s">
+    <Structure name="s_base">
       <Int32 name="i1"/>
       <Int16 name="sh1"/>
-    </Sequence>
+    </Structure>
+    <Vlen name="s_t" type="/s_base"/>
   </Types>
   <Variables>
-    <Seq name="s" type="/s">
+    <Seq name="s" type="/s_t">
       <Dim name="/_Anonymous2"/>
     </Sequence>
   </Variables>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
 </Dataset>

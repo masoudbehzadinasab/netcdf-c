@@ -26,12 +26,13 @@ static int failpoint = 0;
 #define THROW(n) {goto fail;}
 #endif
 
-
 #define PADDING 8
 
 #define LBRACKET '['
 #define RBRACKET ']'
 #define EOFCHAR '\0'
+
+#define DRIVELETTERS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 #ifndef FIX
 #define FIX(s) ((s)==NULL?"NULL":(s))
@@ -108,7 +109,7 @@ ncuriparse(const char* uri0, NCURI** durip)
     char* q;
     int i,c;
     int isfile;
-    int hashost;
+    int hasdrive, hashost;
     char* uri;
 
     if(uri0 == NULL || strlen(uri0) == 0)
@@ -158,27 +159,43 @@ ncuriparse(const char* uri0, NCURI** durip)
        many variants are often accepted.
        By RFC, the proper general format is: file://host/path,
        where the 'host' can be omitted and defaults to 'localhost'.
-       So, assuming no host, the format is: file:///path.
+       and the path includes the leading '/'.
+       So, assuming no host, the format is: "file:///path".
        Some implementations, however, ignore the host, and allow
        the format: file:/path.
+       We also simplify things by assuming the host part is always empty.
+       which means we can have file:///path, but not file://..../path.
        Note in all cases, the leading '/' is considered part of the path,
-       which is then assumed to be an absolute path.
-       The rules implemented here (for file:) are as follows:
-       1. file:/X, where X does not start with a slash: treat /X as the path.
-       2. file:///X, where X does not start with a slash: treat /X as the path.
-       This explicitly disallows this case: file://X.
+       which is then assumed to be an absolute path. But also note that
+       the windows drive letter has to be taken into account. Our rule is that
+       if the path looks like D:..., 
+       where D is a single alphabetic letter (a-z or A-Z),
+       then it is a windows path and can be use in place of a /path.
+       The rules implemented here (for file:) are then as follows
+       1. file:D:... : assume D: is a windows drive letter and treat D:... as the path
+       2. file:/X, where X does not start with a slash: treat /X as the path.
+       3. file://D:... : assume D: is a windows drive letter and treat as the path
+       4. file:///X, where X does not start with a slash: treat /X as the path.
+       All other cases are disallowed: specifically including file://X.
     */
 
     isfile = (strcmp(duri->protocol,"file")==0);
     if(isfile) {
-	hashost = 0; /* assume */
-        if(p[0] == '/' && p[1] == '/' && p[2] == '/') /* we have file:///...*/
-	    p += 2; /* make it point to the start of the path */
-        else if(p[0] == '/' && p[1] != '/') /* we have file:/...*/
-	    p = p; /* leave p; it points to the start of the path */
-	else if(p[0] == '/' && p[1] == '/' && p[2] != '/') { /* we have file://...*/
-	    hashost = 1; /* Assume we have a hostname */
-	    p += 2;
+	int l = strlen(p); /* to test if we have enough characters */
+	char savechar;
+	hashost = 0; /* always */
+	hasdrive = 0; /* assume */
+	if(l >= 2 && p[1] == ':' && strchr(DRIVELETTERS,p[0]) != NULL) { /* case 1 */
+	    p = p; /* p points to the start of the path */
+	    hasdrive = 1;
+        } else if(l >= 2 && p[0] == '/' && p[1] != '/') { /* case 2 */
+	    p = p; /* p points to the start of the path */
+	} else if(l >= 4 && p[0] == '/' && p[1] == '/'
+		&& p[3] == ':' && strchr(DRIVELETTERS,p[2]) != NULL) { /* case 3 */
+	    p = p+2; /* points to the start of the windows path */
+	    hasdrive = 1;
+        } else if(l >= 4 && p[0] == '/' && p[1] == '/' && p[2] == '/' && p[3] != '/') { /* case 4 */
+	    p += 2; /* points to the start of the path */
         } else /* everything else is illegal */
 	    {THROW(NCU_EPATH);}
     } else {
@@ -194,7 +211,7 @@ ncuriparse(const char* uri0, NCURI** durip)
         /* locate the end of the host section and therefore the start
            of the path|query|fragment  */
 	duri->host = p;
-        p  = nclocate(p,"/?#");
+        p  = nclocate(p,"?#");
 	if(p == NULL) { /* rest of uri is empty */
 	    duri->host = strdup(duri->host); /* rest of uri is all host */
 	    duri->path = strdup("/"); /* default */
@@ -282,8 +299,9 @@ ncuriparse(const char* uri0, NCURI** durip)
 	p++;
 	duri->fragment = p; /* temp */
     }
-    if(duri->path != NULL)
+    if(duri->path != NULL) {
         duri->path = (strlen(duri->path) > 0 ? strdup(duri->path) : NULL);
+    }
     if(duri->query != NULL)
 	duri->query = (strlen(duri->query) > 0 ? strdup(duri->query) : NULL);
     if(duri->fragment != NULL)
@@ -309,6 +327,7 @@ ncuriparse(const char* uri0, NCURI** durip)
 	nclistpush(params,NULL);
         duri->fraglist = nclistextract(params);
     }
+
     nclistfree(params);
 
 #ifdef NCXDEBUG

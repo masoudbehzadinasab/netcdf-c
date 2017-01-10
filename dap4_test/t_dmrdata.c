@@ -7,38 +7,46 @@
 Test the netcdf-4 data building process.
 */
 
-#include "t_dmr.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include "netcdf.h"
+
+static void
+fail(int code)
+{
+    if(code != NC_NOERR)
+	fprintf(stderr,"***Fail: %s\n",nc_strerror(code));
+    exit((code==NC_NOERR?EXIT_SUCCESS:EXIT_FAILURE));
+}
 
 int
 main(int argc, char** argv)
 {
     int ret = NC_NOERR;
+    char url[4096];
+    int ncid;
 
-    setup(2,argc,argv);
+    /* Skip cmd name */
+    argc++;
+    argv++;
+
+    if(argc < 2) {
+	fprintf(stderr, "too few arguments: t_dmrdata.c <infile> <outfile>\n");
+	fail(NC_NOERR);
+    }
+
+    /* build the url */
+    snprintf(url,sizeof(url),"file://%s#dap4&debug=copy&substratename=%s",argv[0],argv[1]);
 
 #ifdef DEBUG
-    fprintf(stderr,"t_dmrbuild %s -> %s\n",infile,outfile);
+    fprintf(stderr,"t_dmrbuild %s -> %s\n",url,outfile);
 #endif
-
-    if((ret = NCD4_parse(metadata))) goto done;
-    if((ret = NCD4_metabuild(metadata,ncid))) goto done;
-    if((ret = NCD4_databuild(metadata))) goto done;
+  
+    /* Use the open/close mechanism */
+    if((ret=nc_open(url,NC_NETCDF4,&ncid))) goto done;
+    if((ret=nc_close(ncid))) goto done;
 
 done:
-    return cleanup(ret);
+    fprintf(stderr,"code=%d %s\n",ret,nc_strerror(ret));
+    return (ret ? 1 : 0);
 }
-
-#if 0
-static void
-printxml(const char* input)
-{
-    char* tree;
-    ezxml_t dom = ezxml_parse_str(input,strlen(input));
-    if(dom == NULL) exit(1);
-    tree = ezxml_toxml(dom);
-abort();
-    fprintf(stderr,"////////////////////\n");
-    fprintf(stderr,"%s\n",tree);
-    fprintf(stderr,"////////////////////\n");
-}
-#endif

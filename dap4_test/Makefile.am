@@ -19,12 +19,15 @@ t_dmrdata_SOURCES = t_dmrdata.c
 
 check_PROGRAMS += t_dmrparse t_dmrmeta t_dmrdata
 
-TESTS += t_dmrparse.sh t_dmrmeta.sh t_dmrdata.sh test_raw.sh
+#TESTS += t_dmrparse.sh
+#TESTS += t_dmrmeta.sh
+#TESTS += t_dmrdata.sh
+#TESTS += test_raw.sh
 
 if ENABLE_DAP4_REMOTE_TESTS
 
 if BUILD_UTILITIES
-TESTS += test_remote.sh
+#TESTS += test_remote.sh
 # not yet TESTS += test_hyrax.sh
 endif
 

@@ -14,7 +14,7 @@ main(int argc, char** argv)
 {
     int ret = NC_NOERR;
 
-    setup(2,argc,argv);
+    setup(TDMR_META,argc,argv);
 
 #ifdef DEBUG
     fprintf(stderr,"t_dmrmeta %s -> %s\n",infile,outfile);

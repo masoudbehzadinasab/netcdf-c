@@ -9,15 +9,19 @@
   </Dimensions>
   <Types>
     <Structure name="v1">
-      <Seq name="v" type="/v1_v"/>
+      <Seq name="v" type="/v1_v_t"/>
     </Structure>
-    <Sequence name="v1_v">
+    <Structure name="v1_v_base">
       <Int32 name="v"/>
-    </Sequence>
+    </Structure>
+    <Vlen name="v1_v_t" type="/v1_v_base"/>
   </Types>
   <Variables>
     <Struct name="v1" type="/v1">
       <Dim name="/d2"/>
     </Struct>
   </Variables>
+  <Attribute name="_DAP4_Little_Endian" type="UInt8">
+    <Value value="1"/>
+  </Attribute>
 </Dataset>

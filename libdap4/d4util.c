@@ -60,7 +60,7 @@ NCD4_isLittleEndian(void)
 }
 
 /* Compute the size of an atomic type, except opaque */
-int
+size_t
 NCD4_typesize(nc_type tid)
 {
     switch(tid) {
@@ -88,6 +88,7 @@ NCD4_dimproduct(NCD4node* node)
     return product;
 }
 
+/* Caller must free return value */
 char*
 NCD4_makeFQN(NCD4node* node)
 {
@@ -134,6 +135,7 @@ done:
 
 /*
 create the last part of the fqn
+(post groups)
 */
 char*
 NCD4_makeName(NCD4node* elem, const char* sep)
@@ -404,6 +406,16 @@ NCD4_userpwd(NCURI* uri, char* space, size_t len)
 	}
     }
 }
+
+#ifdef BLOB
+void
+NCD4_saveblob(NCD4meta* meta, void* mem)
+{
+    if(meta->blobs == NULL)
+        meta->blobs = nclistnew();
+    nclistpush(meta->blobs,mem);
+}
+#endif
 
 /**************************************************/
 /* Error reporting */

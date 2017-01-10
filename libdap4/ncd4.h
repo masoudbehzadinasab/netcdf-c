@@ -14,6 +14,7 @@ defined here, including function-like #defines.
 #include "d4includes.h"
 #include "d4util.h"
 #include "d4debug.h"
+#include "nc4internal.h"
 
 /**************************************************/
 /* Constants */
@@ -44,8 +45,6 @@ extern NCD4globalstate* NCD4_globalstate;
 #define nullfree(m) ((m)==NULL?NULL:(free(m),NULL))
 #endif
 #define nulldup(s) ((s)==NULL?NULL:strdup(s))
-#define getdap(drno) ((NCD4INFO*)((NC*)drno)->dispatchdata)
-#define getnc4id(drno) (getdap(drno)->nc4id)
 
 /**************************************************/
 /* DSP API wrappers */
@@ -90,6 +89,7 @@ extern int NCD4_readDAP(NCD4INFO* state, int flags);
 /* From d4parser.c */
 extern int NCD4_parse(NCD4meta*);
 extern NCD4node* NCD4_findAttr(NCD4node* container, const char* attrname);
+extern NCD4node* NCD4_groupFor(NCD4node* node);
 
 /* From d4printer.c */
 extern int NCD4_print(NCD4meta*, NCbytes* output);
@@ -99,32 +99,30 @@ extern NCD4meta* NCD4_newmeta(NCD4CSUM, size_t size, void* rawdata);
 extern void NCD4_reclaimMeta(NCD4meta*);
 extern void NCD4_setdebuglevel(NCD4meta*,int);
 extern int NCD4_metabuild(NCD4meta*, int ncid);
+extern size_t NCD4_computeTypeSize(NCD4meta*, NCD4node* type);
 
 /* From d4chunk.c */
 extern int NCD4_dechunk(NCD4meta*);
 extern int NCD4_isdmr(const void* data);
 extern void NCD4_setdmr(NCD4meta* meta, const char* dmr);
 
-/* From d4serial.c */
-extern int NCD4_serial(NCD4meta*, NClist* topvars);
+/* From d4swap.c */
+extern int NCD4_swapdata(NCD4meta*, NClist* topvars);
 
 /* From d4fix.c */
 extern int NCD4_delimit(NCD4meta*, NCD4node* var, void** offsetp);
-extern int NCD4_fixopfixed(NCD4meta*, NCD4node* var);
-extern int NCD4_fixopvar(NCD4meta*, NCD4node* var);
-extern int NCD4_fixsequences(NCD4meta*, NCD4node* cmpd);
-extern int NCD4_fixstr(NCD4meta*, NCD4node* var);
-extern int NCD4_markflags(NCD4meta*,NClist* toplevel);
 extern int NCD4_toposort(NCD4meta*);
 
 /* From d4data.c */
-extern int NCD4_databuild(NCD4meta*);
+extern int NCD4_processdata(NCD4meta*);
+extern int NCD4_fillinstance(NCD4meta*, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs);
+extern int NCD4_getToplevelVars(NCD4meta* meta, NCD4node* group, NClist* toplevel);
 
 /* From d4util.c */
 extern d4size_t NCD4_dimproduct(NCD4node* node);
 extern void NCD4_hostport(NCURI* uri, char* space, size_t len);
 extern void NCD4_userpwd(NCURI* uri, char* space, size_t len);
-extern int NCD4_typesize(nc_type tid);
+extern size_t NCD4_typesize(nc_type tid);
 extern int NCD4_isLittleEndian(void);/* Return 1 if this machine is little endian */
 extern int NCD4_errorNC(int code, const int line, const char* file);
 extern int NCD4_error(int code, const int line, const char* file, const char* fmt, ...);
@@ -149,6 +147,9 @@ extern void NCD4_rcfree(NClist* rc);
 extern char* NCD4_rclookup(char* key, char* hostport);
 extern int NCD4_parseproxy(NCD4INFO* info, const char* surl);
 extern int NCD4_rcdefault(NCD4INFO*);
+
+/* From d4cvt.c */
+extern int NCD4_convert(nc_type srctype, nc_type dsttype, char* memory0, char* value0, size_t count);
 
 /* From d4crc32.c */
 extern unsigned int NCD4_crc32(unsigned int crc, const void *buf, size_t size);
@@ -176,6 +177,18 @@ extern int nc__dap4(void);
 #define getnc3id(d4) (getdap(d4)->nc4id)
 
 #define ISTOPLEVEL(var) ((var)->container == NULL || (var)->container->sort == NCD4_GROUP)
+
+#define FILEIDPART(NCID) (((unsigned int) (NCID)) >> ID_SHIFT)
+#define GROUPIDPART(NCID) (((unsigned int) (NCID)) & GRP_ID_MASK)
+#define MAKENCID(grp,file) ((((unsigned int)(file)) << ID_SHIFT) | (grp))
+
+#define getdap(ncp) ((NCD4INFO*)((NC*)ncp)->dispatchdata)
+#define getnc4id(ncp) (getdap(ncp)->substrate.nc4id)
+
+/* Convert a dap4 grpid to a substrate id */
+#define makenc4id(ncp,dap4id) (((dap4id) & GRP_ID_MASK) | getdap(ncp)->substrate.nc4id)
+/* and the inverse */
+#define makedap4id(ncp,nc4id) (((nc4id) & GRP_ID_MASK) | (ncp)->ext_ncid)
 
 #endif /*NCD4_H*/
 

@@ -94,6 +94,10 @@ NCD4_NOTRANS = 0, /* Apply straight DAP4->NetCDF4 translation */
 NCD4_TRANSNC4 = 1, /* Use _edu.ucar flags to achieve better translation */
 };
 
+/* Define possible debug flags */
+#define NCF_DEBUG_NONE  0
+#define NCF_DEBUG_COPY  1 /* Dump data into the substrate and close it rather than abortiing it */
+
 /* Define possible retrieval modes */
 enum NCD4mode {
 NCD4_DMR = 1,
@@ -173,15 +177,20 @@ struct NCD4node {
         char* dapversion;
         char* dmrversion;
         char* datasetname;
+        NClist* varbyid; /* NClist<NCD4node*> indexed by varid */
     } group;
     struct { /* Meta Info */
-        int id; /* Relevant netcdf id; interpretation depends on sort */
+        int id; /* Relevant netcdf id; interpretation depends on sort; */
         nc_type cmpdid; /*netcdf id for the compound type created for seq type */
-        unsigned long long offset; /* computed structure field offsets */
+	size_t memsize; /* size of a memory instance without taking dimproduct into account,
+                           but taking compound alignment into account  */
+        d4size_t offset; /* computed structure field offset in memory */
+        size_t alignment; /* computed structure field alignment in memory */
+	int isfixedsize; /* sort == NCD4_TYPE; Is this a fixed size (recursively) type? */
     } meta;
     struct { /* Data compilation info */
         int flags; /* See d4data for actual flags */
-	D4blob topvardata; /* cover the memory of this TOPLEVEL variable/field */
+	D4blob dap4data; /* offset and start pos for this var's data in serialization */
         unsigned int remotechecksum; /* toplevel variable checksum as sent by server*/    
         unsigned int localchecksum; /* toplevel variable checksum as computed by client */    
     } data;
@@ -213,7 +222,7 @@ typedef struct NCD4serial {
 /* This will be passed out of the parse */
 struct NCD4meta {
     NCD4INFO* controller;
-    int ncid; /* root ncid of the netcdf-4 file; copy of NCD4parse argument*/
+    int ncid; /* root ncid of the substrate netcdf-4 file; copy of NCD4parse argument*/
     NCD4node* root;
     NClist* allnodes; /*list<NCD4node>*/
     struct Error { /* Content of any error response */
@@ -229,6 +238,9 @@ struct NCD4meta {
     int checksumming; /* 1=>compute local checksum */
     int swap; /* 1 => swap data */
     NClist* blobs;  /* various malloc'd chunks will be remembered here */
+    /* Define some "global" (to a DMR) data */
+    NClist* groupbyid; /* NClist<NCD4node*> indexed by groupid >> 16; this is global */
+    NCD4node* _bytestring; /* If needed */
 };
 
 typedef struct NCD4parser {
@@ -323,7 +335,6 @@ struct NCD4curl {
 
 struct NCD4INFO {
     NC*   controller; /* Parent instance of NCD4INFO */
-    int nc4id; /* nc4 file ncid used to hold metadata */
     int debug;
     char* rawurltext; /* as given to ncd4_open */
     char* urltext;    /* as modified by ncd4_open */
@@ -339,12 +350,15 @@ struct NCD4INFO {
         long daplastmodified;
     } data;
     struct {
-	char* filename; /* of the substrate file, not really important */	
+	char* filename; /* of the substrate file */
+        int nc4id; /* substrate nc4 file ncid used to hold metadata; not same as external id  */
 	NCD4meta* metadata;
     } substrate;
     struct {
         NCCONTROLS  flags;
+        NCCONTROLS  debugflags;
 	NCD4translation translation;
+	char substratename[NC_MAX_NAME];
     } controls;
 };
 
