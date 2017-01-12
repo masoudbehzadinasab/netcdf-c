@@ -39,9 +39,6 @@ NCD4_swapdata(NCD4meta* compiler, NClist* topvars)
     for(i=0;i<nclistlength(topvars);i++) {
 	NCD4node* var = (NCD4node*)nclistget(topvars,i);
 	var->data.dap4data.memory = offset;
-
-	var->data.remotechecksum = 0;
-
 	switch (var->subsort) {
 	default:
 	    if((ret=walkAtomicVar(compiler,var,var,&offset))) goto done;

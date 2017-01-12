@@ -11,6 +11,9 @@ dimensions:
 	d2 = 2 ;
 variables:
 	v1_t v1(d2) ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
  v1 = {{}}, {{}} ;

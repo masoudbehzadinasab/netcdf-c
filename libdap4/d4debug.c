@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "d4includes.h"
+#include "ncdispatch.h"
 
 int ncdap4debug = 0;
 
@@ -120,9 +121,23 @@ NCD4_debugcopy(NCD4INFO* info)
             if((ret=nc_get_var(d4gid,varid,memory)))
 	        goto done;
  	}
-	/* Now, turn around and write it to the substrate */
-        if((ret=nc_put_var(grpid,varid,memory)))
-	    goto done;
+	/* Now, turn around and write it to the substrate.
+	  WARNING: we have to specify the shape ourselves
+          because, if unlimited is involved then there is
+          potentially a difference between the substrate unlimited
+          size and the dap4 data specified size. In fact,
+          the substrate will always be zero unless debugcopy is used.
+	*/
+	{	
+	    size_t edges[NC_MAX_VAR_DIMS];
+	    int d;
+	    for(d=0;d<nclistlength(var->dims);d++) {
+		NCD4node* dim = (NCD4node*)nclistget(var->dims,d);
+		edges[d] = (size_t)dim->dim.size;
+	    }
+            if((ret=nc_put_vara(grpid,varid,nc_sizevector0,edges,memory)))
+	        goto done;
+	}
     }	    
 done:
     if(ret != NC_NOERR) {

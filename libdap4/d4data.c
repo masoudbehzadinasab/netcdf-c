@@ -118,7 +118,9 @@ NCD4_processdata(NCD4meta* meta)
 	    NCD4node* var = (NCD4node*)nclistget(toplevel,i);
 	    if(var->data.localchecksum != var->data.remotechecksum) {
 		fprintf(stderr,"Checksum mismatch: %s\n",var->name);
-		abort();
+		fflush(stderr);
+		ret = NC_EDAP;
+		goto done;
 	    }
         }
     }
@@ -146,6 +148,9 @@ NCD4_fillinstance(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** 
 
     /* If the type is fixed size, then just copy it */
     if(type->subsort <= NC_UINT64) {
+	memcpy(dst,offset,instancesize);
+	offset += instancesize;
+    } else if(type->subsort == NC_ENUM) {
 	memcpy(dst,offset,instancesize);
 	offset += instancesize;
     } else if(type->subsort == NC_STRING) {/* oob strings */
@@ -187,11 +192,11 @@ fillstruct(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** offsetp
 	NCD4node* field = nclistget(type->vars,i);
 	NCD4node* ftype = field->basetype;
 	void* fdst = dst + field->meta.offset;
-	d4size_t fieldsize = field->meta.memsize;
+	d4size_t fieldsize = ftype->meta.memsize;
 	if((ret=NCD4_fillinstance(meta,ftype,fieldsize,&offset,fdst,blobs)))
             FAIL(ret,"fillstruct");
     }
-    
+    *offsetp = offset;    
 done:
     return THROW(ret);
 }

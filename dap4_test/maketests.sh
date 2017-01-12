@@ -24,7 +24,7 @@
 
 SRC="d:/git/thredds/dap4/d4tests/src/test/data/resources"
 
-# Recreate the testfiles directories
+# Recreate the <testfiles> directories
 rm -fr ./daptestfiles ./cdltestfiles ./dmrtestfiles
 mkdir ./daptestfiles
 mkdir ./dmrtestfiles
@@ -49,10 +49,20 @@ else
 fi
 done
 
+# Compile the cdl files
+pushd ./cdltestfiles
+F=`ls -1 *.cdl | sed -e 's/[.]cdl//' |tr '\r\n' '  '`
+popd
+if ! test -f nctestfiles ; mkdir nctestfiles; fi
+for f in $F ; do
+    ../ncgen/ncgen -4 -o nctestfiles/${f}.nc cdltestfiles/${f}.cdl 
+done
+
 # Fix the permissions; this is cosmetic
 pushd daptestfiles ; chmod a-x * ; popd
 pushd dmrtestfiles ; chmod a-x * ; popd
 pushd cdltestfiles ; chmod a-x * ; popd
+pushd nctestfiles ; chmod a-x * ; popd
 
 # If invoked with the argument "git", this
 # program will add the files to the git repo.
@@ -60,6 +70,7 @@ if test "x$1" = xgit ; then
 git add daptestfiles/*.dap
 git add daptestfiles/*.dmr
 git add cdltestfiles/*.cdl
+git add nctestfiles/*.nc
 fi
 
 exit

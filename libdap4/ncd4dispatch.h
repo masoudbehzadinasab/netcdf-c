@@ -27,6 +27,9 @@ EXTERNL int
 NCD4_abort(int ncid);
 
 EXTERNL int
+NCD4_inq_dim(int ncid, int dimid, char* name, size_t* lenp);
+
+EXTERNL int
 NCD4_get_vara(int ncid, int varid,
 	    const size_t *start, const size_t *edges,
             void *value,

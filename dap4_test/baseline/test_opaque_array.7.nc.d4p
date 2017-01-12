@@ -14,6 +14,9 @@
       <Dim name="/_Anonymous2"/>
     </Opaque>
   </Variables>
+  <Attribute name="_dap4.ce" type="String">
+    <Value value="/vo2[1][0:1]"/>
+  </Attribute>
   <Attribute name="_DAP4_Little_Endian" type="UInt8">
     <Value value="1"/>
   </Attribute>

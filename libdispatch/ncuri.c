@@ -211,7 +211,7 @@ ncuriparse(const char* uri0, NCURI** durip)
         /* locate the end of the host section and therefore the start
            of the path|query|fragment  */
 	duri->host = p;
-        p  = nclocate(p,"?#");
+        p  = nclocate(p,"/?#");
 	if(p == NULL) { /* rest of uri is empty */
 	    duri->host = strdup(duri->host); /* rest of uri is all host */
 	    duri->path = strdup("/"); /* default */

@@ -262,7 +262,8 @@ parseDimensions(NCD4parser* parser, NCD4node* group, ezxml_t xml)
 	unlimstr = ezxml_attr(x,"unlimited");
 	if((ret = parseULL(sizestr,&size))) goto done;
 	if((ret=makeNode(parser,group,x,NCD4_DIM,NC_NULL,&dimnode))) goto done;
-	dimnode->dim.size = (unlimstr != NULL ? 0 : (long long)size);
+	dimnode->dim.size = (long long)size;
+	dimnode->dim.isunlimited = (unlimstr != NULL);
 	/* Process attributes */
 	if((ret = parseAttributes(parser,dimnode,x))) goto done;    
 	classify(group,dimnode);

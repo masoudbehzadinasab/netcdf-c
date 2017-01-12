@@ -9,4 +9,7 @@ dimensions:
 	d2 = 2 ;
 variables:
 	x_t x(d3, d2) ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 }

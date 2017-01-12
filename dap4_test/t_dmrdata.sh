@@ -10,6 +10,7 @@ cd $WD
 
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.dap.ncdump ; fi
 for f in $F ; do
+    echo "testing: ${f}"
     if ! ./t_dmrdata ${DAPTESTFILES}/${f} ./results/${f}.nc ; then
         failure "./t_dmrdata ${DAPTESTFILES}/${f} ./results/${f}.nc"
     fi

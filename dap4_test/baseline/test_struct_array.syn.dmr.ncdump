@@ -12,4 +12,7 @@ variables:
 	float t(dy) ;
 	s_t s(dx, dy) ;
 		string s:_edu.ucar.maps = "/z", "/t" ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 }

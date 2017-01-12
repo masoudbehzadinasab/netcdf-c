@@ -19,7 +19,6 @@ if test "x$SETX" = x1 ; then echo "file=$0"; set -x ; fi
 
 # Define input paths
 WD=`pwd`
-cd ${srcdir}/testfiles; TESTFILES=`pwd` ; cd ${WD}
 cd ${srcdir}/daptestfiles; DAPTESTFILES=`pwd` ; cd ${WD}
 cd ${srcdir}/dmrtestfiles; DMRTESTFILES=`pwd` ; cd ${WD}
 cd ${srcdir}/cdltestfiles; CDLTESTFILES=`pwd` ; cd ${WD}
@@ -62,4 +61,24 @@ else
 echo "*** Pass"
 exit 0
 fi
+}
+
+suppress() {
+  F0="$1"
+  if test "x${SUPPRESS}" = x; then
+    RESULT="$F0"
+  else
+    RESULT=""
+    for f in ${F0} ; do
+      ignore=0
+      for s in ${SUPPRESS} ; do
+        if test "x$s" = "x$f" ; then
+  	  ignore=1;
+	  echo "Suppressing: $f"
+	  break;
+        fi       
+      done
+      if test "x$ignore" = x0 ; then RESULT="$f ${RESULT}" ; fi
+    done
+  fi
 }

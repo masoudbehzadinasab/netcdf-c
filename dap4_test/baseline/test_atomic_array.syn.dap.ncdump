@@ -21,28 +21,34 @@ variables:
 	_bytestring vo(d1, d2) ;
 	cloud_class_t primary_cloud(d5) ;
 		cloud_class_t primary_cloud:_FillValue = Missing ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
  vu8 =
-  255, 255, 255,
-  255, 255, 255 ;
+  186, 201, 131,
+  63, 189, 55 ;
 
- v16 = _, _, _, _ ;
+ v16 = -341, -21899, -13413, -22144 ;
 
  vu32 =
-  _, _, _,
-  _, _, _ ;
+  2367803413, 3586730583, 511843988,
+  3754752863, 2950934681, 2366232135 ;
 
- vd = _, _ ;
+ vd = 0.217870081192792, 0.602450791996768 ;
 
- vc = "" ;
+ vc = "CO" ;
 
  vs =
-  _, _,
-  _, _ ;
+  "{S", "gb8^OE$",
+  "4a/q%n9;5Y", "{fIl?T\"\\A[" ;
 
  vo =
-  {}, {} ;
+  
+    {162, 23, 122, 167, 40, 124, 4, 250, 139, 181, 123, 205, 247, 110, 200, 15}, 
+    {52, 250, 71, 42, 169, 64, 77, 213, 67, 20, 60, 173, 237, 48, 58, 117} ;
 
- primary_cloud = _, _, _, _, _ ;
+ primary_cloud = Stratus, Cirrocumulus, Nimbostratus, Cirrostratus, 
+    Stratocumulus ;
 }

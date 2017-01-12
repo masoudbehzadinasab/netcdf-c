@@ -6,7 +6,8 @@ P=data
 V=valgrind --leak-check=full
 G=gdb --args
 
-I=d:/git/dap4/dap4_test/daptestfiles/test_atomic_array.5.nc
+X=test_unlim1.nc
+I=d:/git/dap4/dap4_test/daptestfiles/${X}
 O=./t.nc
 
 ifeq ($P, parse)
@@ -32,7 +33,9 @@ LLP=/usr/local/lib:${LD_LIBRARY_PATH}
 ifeq ($P, meta)
 all:: clean build
 else
-all:: clean g
+all:: clean mkt
+	./t $I $O
+	ncdump $O	
 endif
 
 g:: mkt

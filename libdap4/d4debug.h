@@ -10,10 +10,10 @@
 
 #undef D4DEBUG /* general debug */
 #undef D4DEBUGPARSER
-#define D4DEBUGMETA
+#undef D4DEBUGMETA
 #undef D4DEBUGDATA
-#define D4DUMPDMR
-#define D4DUMPDAP
+#undef D4DUMPDMR
+#undef D4DUMPDAP
 #undef D4DUMPCSUM
 
 #ifdef D4DEBUG

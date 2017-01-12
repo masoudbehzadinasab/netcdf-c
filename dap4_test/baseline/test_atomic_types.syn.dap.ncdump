@@ -23,35 +23,39 @@ variables:
 		cloud_class_t primary_cloud:_FillValue = Missing ;
 	cloud_class_t secondary_cloud ;
 		cloud_class_t secondary_cloud:_FillValue = Missing ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
- v8 = -127 ;
+ v8 = 58 ;
 
- vu8 = 255 ;
+ vu8 = 201 ;
 
- v16 = _ ;
+ v16 = 896 ;
 
- vu16 = _ ;
+ vu16 = 16177 ;
 
- v32 = _ ;
+ v32 = -1123468835 ;
 
- vu32 = _ ;
+ vu32 = 2125143125 ;
 
- v64 = _ ;
+ v64 = 3059391736915381031 ;
 
- vu64 = _ ;
+ vu64 = 11577488182652895291 ;
 
- vf = _ ;
+ vf = 0.5512972 ;
 
- vd = _ ;
+ vd = 0.790267301128816 ;
 
- vc = "" ;
+ vc = "*" ;
 
- vs = _ ;
+ vs = "O,L?c8A%V" ;
 
- vo = {} ;
+ vo = 
+    {70, 241, 105, 239, 35, 203, 175, 155, 31, 235, 217, 158, 78, 22, 206, 201} ;
 
- primary_cloud = _ ;
+ primary_cloud = Altocumulus ;
 
- secondary_cloud = _ ;
+ secondary_cloud = Stratocumulus ;
 }

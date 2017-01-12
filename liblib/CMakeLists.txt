@@ -66,6 +66,7 @@ ENDIF()
 
 IF(USE_DAP)
   SET(TLL_LIBS ${TLL_LIBS} ${CURL_LIBRARY})
+  BUILD_BIN_TEST_NO_PREFIX(findtestserver nctestserver)
 ENDIF()
 
 IF(USE_HDF4)

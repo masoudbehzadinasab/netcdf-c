@@ -82,13 +82,13 @@ NCD4_redef(int ncid)
 static int
 NCD4__enddef(int ncid, size_t h_minfree, size_t v_align, size_t v_minfree, size_t r_align)
 {
-    return (NC_EPERM);
+    return (NC_NOERR); /* let it go */
 }
 
 static int
 NCD4_sync(int ncid)
 {
-    return (NC_EINVAL);
+    return (NC_NOERR); /* let it go */
 }
 
 static int
@@ -116,20 +116,6 @@ NCD4_put_vars(int ncid, int varid,
             const void *value0, nc_type memtype)
 {
     return THROW(NC_EPERM);
-}
-
-
-/**************************************************/
-
-static int
-NCD4_inq_format_extended(int ncid, int* formatp, int* modep)
-{
-    NC* nc;
-    int ncstatus = NC_check_id(ncid, (NC**)&nc);
-    if(ncstatus != NC_NOERR) return (ncstatus);
-    if(modep) *modep = nc->mode;
-    if(formatp) *formatp = NC_FORMATX_DAP2;
-    return THROW(NC_NOERR);
 }
 
 /*
@@ -328,18 +314,6 @@ NCD4_inq_dimid(int ncid, const char* name, int* idp)
     if((ret = NC_check_id(ncid, (NC**)&ncp)) != NC_NOERR) return (ret);
     substrateid = makenc4id(ncp,ncid);
     ret = nc_inq_dimid(substrateid, name, idp);
-    return (ret);
-}
-
-static int
-NCD4_inq_dim(int ncid, int dimid, char* name, size_t* lenp)
-{
-    NC* ncp;
-    int ret;
-    int substrateid;
-    if((ret = NC_check_id(ncid, (NC**)&ncp)) != NC_NOERR) return (ret);
-    substrateid = makenc4id(ncp,ncid);
-    ret = nc_inq_dim(substrateid, dimid, name, lenp);
     return (ret);
 }
 
@@ -757,6 +731,65 @@ NCD4_get_var_chunk_cache(int ncid, int p2, size_t* p3, size_t* p4, float* p5)
 }
 
 #endif // USE_NETCDF4
+
+/**************************************************/
+/*
+Following functions are overridden to handle 
+dap4 implementation specific issues.
+*/
+
+/* Force specific format */
+static int
+NCD4_inq_format_extended(int ncid, int* formatp, int* modep)
+{
+    NC* nc;
+    int ncstatus = NC_check_id(ncid, (NC**)&nc);
+    if(ncstatus != NC_NOERR) return (ncstatus);
+    if(modep) *modep = nc->mode;
+    if(formatp) *formatp = NC_FORMATX_DAP4;
+    return THROW(NC_NOERR);
+}
+
+/*
+Override nc_inq_dim to handle the fact
+that unlimited dimensions will not have
+a proper size because the substrate has
+never (not yet) been written.
+*/
+int
+NCD4_inq_dim(int ncid, int dimid, char* name, size_t* lenp)
+{
+    int ret = NC_NOERR;
+    NC* ncp;
+    NCD4INFO* info;
+    NCD4meta* meta;
+    int i;
+    NCD4node* dim = NULL;
+
+    if((ret = NC_check_id(ncid, (NC**)&ncp)) != NC_NOERR)
+	goto done;
+    info = (NCD4INFO*)ncp->dispatchdata;
+    meta = info->substrate.metadata;
+
+    /* Locate the dimension specified by dimid */
+    for(i=0;i<nclistlength(meta->allnodes);i++) {
+	NCD4node* n = (NCD4node*)nclistget(meta->allnodes,i);
+	if(n->sort == NCD4_DIM && n->meta.id == dimid) {
+	    dim = n;
+	    break;
+	}
+    }
+    if(dim == NULL)
+	{ret = NC_EBADDIM; goto done;}
+    if(name)
+	strncpy(name,dim->name,NC_MAX_NAME);
+    if(lenp)
+	*lenp = (size_t)dim->dim.size;
+done:
+    return (ret);
+}
+
+/**************************************************/
 
 int
 NCDAP4_ping(const char* url)

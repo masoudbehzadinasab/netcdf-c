@@ -3,4 +3,8 @@ dimensions:
 	d2 = 2 ;
 variables:
 	int t(d2) ;
+
+// global attributes:
+		string :_dap4.ce = "/t[1]" ;
+		:_DAP4_Little_Endian = 1UB ;
 }

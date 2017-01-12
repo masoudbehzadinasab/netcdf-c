@@ -263,6 +263,9 @@ buildGroups(NCD4meta* builder, NCD4node* parent)
 #ifdef D4DEBUG
     fprintf(stderr,"build group: %s\n",parent->name);
 #endif
+    /* Define any group level attributes */
+    if((ret = buildAttributes(builder,parent))) goto done;    
+
     for(i=0;i<nclistlength(parent->groups);i++) {
 	NCD4node* g = (NCD4node*)nclistget(parent->groups,i);
         if(g->group.isdataset) {
@@ -282,7 +285,11 @@ buildDimension(NCD4meta* builder, NCD4node* dim)
 {
     int ret = NC_NOERR;
     NCD4node* group = NCD4_groupFor(dim);
-    NCCHECK((nc_def_dim(group->meta.id,dim->name,(size_t)dim->dim.size,&dim->meta.id)));
+    if(dim->dim.isunlimited) {
+	NCCHECK((nc_def_dim(group->meta.id,dim->name,NC_UNLIMITED,&dim->meta.id)));
+    } else {    
+	NCCHECK((nc_def_dim(group->meta.id,dim->name,(size_t)dim->dim.size,&dim->meta.id)));
+    }
 done:
     return THROW(ret);
 }
@@ -900,20 +907,28 @@ backslashEscape(const char* s)
 static int
 markfixedsize(NCD4meta* meta)
 {
-    int i;
+    int i,j;
     for(i=0;i<nclistlength(meta->allnodes);i++) {
 	int fixed = 1;
 	NCD4node* n = (NCD4node*)nclistget(meta->allnodes,i);
 	if(n->sort != NCD4_TYPE) continue;
-	if(n->subsort != NC_STRUCT) continue;
-        for(i=0;i<nclistlength(n->vars);i++) {  
-            NCD4node* field = (NCD4node*)nclistget(n->vars,i);
-	    if(!field->basetype->meta.isfixedsize) {
-		fixed = 0;
-		break;
+	switch (n->subsort) {
+	case NC_STRUCT:
+            for(j=0;j<nclistlength(n->vars);j++) {  
+                NCD4node* field = (NCD4node*)nclistget(n->vars,j);
+	        if(!field->basetype->meta.isfixedsize) {
+		    fixed = 0;
+		    break;
+	        }
 	    }
+	    n->meta.isfixedsize = fixed;
+	    break;
+	case NC_ENUM:
+	    n->meta.isfixedsize = 1;
+	    break;	
+	default: /* leave as is */
+	    break;
 	}
-	n->meta.isfixedsize = fixed;
     }
     return NC_NOERR;
 }

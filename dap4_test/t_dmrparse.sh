@@ -10,6 +10,7 @@ cd $WD
 
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.d4p ; fi
 for f in $F ; do
+    echo "testing: $f"
     if ! ./t_dmrparse ${DMRTESTFILES}/${f}.dmr > ./results/${f}.d4p ; then
 	failure "${f}"
     fi

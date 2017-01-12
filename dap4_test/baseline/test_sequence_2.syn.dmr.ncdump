@@ -9,4 +9,7 @@ dimensions:
 	_Anonymous2 = 2 ;
 variables:
 	s_t s(_Anonymous2) ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 }

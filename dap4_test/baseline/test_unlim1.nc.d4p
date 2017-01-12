@@ -7,7 +7,7 @@
   <Dimensions>
     <Dimension name="lat" size="3"/>
     <Dimension name="lon" size="2"/>
-    <Dimension name="time" size="0"/>
+    <Dimension name="time" size="2"/>
   </Dimensions>
   <Variables>
     <Float32 name="lat">

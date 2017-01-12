@@ -8,6 +8,10 @@ IF(BUILD_V2)
   SET(libdispatch_SOURCES ${libdispatch_SOURCES} dv2i.c)
 ENDIF(BUILD_V2)	
 
+IF(BUILD_V2)
+  SET(libdispatch_SOURCES ${libdispatch_SOURCES} dv2i.c)
+ENDIF(BUILD_V2)	
+
 add_library(dispatch OBJECT ${libdispatch_SOURCES}) 
 
 FILE(GLOB CUR_EXTRA_DIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*.h ${CMAKE_CURRENT_SOURCE_DIR}/*.c)

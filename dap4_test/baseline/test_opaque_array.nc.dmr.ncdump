@@ -5,4 +5,7 @@ dimensions:
 	d2 = 2 ;
 variables:
 	opaque8_t vo2(d2, d2) ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 }

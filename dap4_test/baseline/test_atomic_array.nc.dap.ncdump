@@ -21,6 +21,9 @@ variables:
 	_bytestring vo(d1, d2) ;
 	cloud_class_t primary_cloud(d5) ;
 		cloud_class_t primary_cloud:_FillValue = Missing ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
  vu8 =
@@ -38,11 +41,11 @@ data:
  vc = "@&" ;
 
  vs =
-  _, _,
-  _, _ ;
+  "hello\tworld", "\r\n",
+  "Καλημέα", "abc" ;
 
  vo =
-  {}, {} ;
+  {1, 35, 69, 103, 137, 171, 205, 239}, {171, 205, 239, 0, 0, 0, 0, 0} ;
 
- primary_cloud = _, _, _, _, _ ;
+ primary_cloud = Clear, Stratus, Clear, Cumulonimbus, _ ;
 }

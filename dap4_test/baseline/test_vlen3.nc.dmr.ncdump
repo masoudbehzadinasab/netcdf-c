@@ -9,4 +9,7 @@ types:
   }; // v1_t
 variables:
 	v1_t v1 ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 }

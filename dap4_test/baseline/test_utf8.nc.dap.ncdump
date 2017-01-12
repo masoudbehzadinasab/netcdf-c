@@ -3,7 +3,10 @@ dimensions:
 	d2 = 2 ;
 variables:
 	string vs(d2) ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
- vs = "Καλημέα", _ ;
+ vs = "Καλημέα", "abc" ;
 }

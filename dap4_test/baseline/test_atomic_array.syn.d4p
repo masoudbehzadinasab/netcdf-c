@@ -26,7 +26,7 @@
       <EnumConst name="Cirrus" value="10"/>
       <EnumConst name="Missing" value="127"/>
     </Enumeration>
-    <Opaque name="_bytestring" size="0"/>
+    <Opaque name="_bytestring"/>
   </Types>
   <Variables>
     <UInt8 name="vu8">

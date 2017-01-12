@@ -1597,7 +1597,7 @@ nc_inq_type(int ncid, nc_type xtype, char *name, size_t *size)
       a valid ncid */
    stat = NC_check_id(ncid, &ncp);
    if(stat != NC_NOERR) /* bad ncid */
-      return NC_EBADID;;
+      return NC_EBADTYPE;
    /* have good ncid */
    return ncp->dispatch->inq_type(ncid,xtype,name,size);
 }

@@ -4,11 +4,14 @@ variables:
 	short v16 ;
 	uint uv32 ;
 		uv32:_FillValue = 17U ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
- uv8 = 0 ;
+ uv8 = 240 ;
 
- v16 = 0 ;
+ v16 = 32700 ;
 
- uv32 = 0 ;
+ uv32 = 111000 ;
 }

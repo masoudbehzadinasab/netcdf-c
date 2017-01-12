@@ -23,35 +23,38 @@ variables:
 		cloud_class_t primary_cloud:_FillValue = Missing ;
 	cloud_class_t secondary_cloud ;
 		cloud_class_t secondary_cloud:_FillValue = Missing ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
- v8 = -127 ;
+ v8 = -128 ;
 
  vu8 = 255 ;
 
- v16 = _ ;
+ v16 = -32768 ;
 
  vu16 = _ ;
 
- v32 = _ ;
+ v32 = 2147483647 ;
 
  vu32 = _ ;
 
- v64 = _ ;
+ v64 = 9223372036854775807 ;
 
- vu64 = _ ;
+ vu64 = 18446744073709551615 ;
 
- vf = _ ;
+ vf = 3.141593 ;
 
- vd = _ ;
+ vd = 3.14159265358979 ;
 
- vc = "" ;
+ vc = "@" ;
 
- vs = _ ;
+ vs = "hello\tworld" ;
 
- vo = {} ;
+ vo = {1, 35, 69, 103, 137, 171, 205, 239} ;
 
- primary_cloud = _ ;
+ primary_cloud = Stratus ;
 
  secondary_cloud = _ ;
 }

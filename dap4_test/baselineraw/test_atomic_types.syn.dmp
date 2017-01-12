@@ -1,10 +1,10 @@
 netcdf test_atomic_types {
 types:
-  ubyte(*) _bytestring ;
   byte enum cloud_class_t {Clear = 0, Cumulonimbus = 1, Stratus = 2, 
       Stratocumulus = 3, Cumulus = 4, Altostratus = 5, Nimbostratus = 6, 
       Altocumulus = 7, Cirrostratus = 8, Cirrocumulus = 9, Cirrus = 10, 
       Missing = 127} ;
+  ubyte(*) _bytestring ;
 variables:
 	byte v8 ;
 	ubyte vu8 ;
@@ -23,6 +23,9 @@ variables:
 		cloud_class_t primary_cloud:_FillValue = Missing ;
 	cloud_class_t secondary_cloud ;
 		cloud_class_t secondary_cloud:_FillValue = Missing ;
+
+// global attributes:
+		:_DAP4_Little_Endian = 1UB ;
 data:
 
  v8 = 58 ;

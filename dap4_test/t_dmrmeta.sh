@@ -19,7 +19,9 @@ fi
 done
 
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.dmr.ncdump ; fi
-for f in $F ; do
+
+for f in ${RESULT} ; do
+    echo "checking: $f"
     if ! ./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f} ; then
         failure "./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f}"
     fi
