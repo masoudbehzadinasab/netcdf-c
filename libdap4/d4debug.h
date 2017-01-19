@@ -11,9 +11,9 @@
 #undef D4DEBUG /* general debug */
 #undef D4DEBUGPARSER
 #undef D4DEBUGMETA
+#undef D4DUMPDAP
 #undef D4DEBUGDATA
 #undef D4DUMPDMR
-#undef D4DUMPDAP
 #undef D4DUMPCSUM
 
 #ifdef D4DEBUG

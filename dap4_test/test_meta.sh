@@ -20,13 +20,13 @@ done
 
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.dmr.ncdump ; fi
 
-for f in ${RESULT} ; do
+for f in ${F} ; do
     echo "checking: $f"
-    if ! ./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f} ; then
-        failure "./t_dmrmeta ${DMRTESTFILES}/${f}.dmr ./results/${f}"
+    if ! ${VG} ./test_meta ${DMRTESTFILES}/${f}.dmr ./results/${f} ; then
+        failure "./test_meta ${DMRTESTFILES}/${f}.dmr ./results/${f}"
     fi
     echo ncdump -h ./results/${f}
-    ncdump -h ./results/${f} > ./results/${f}.dmr.ncdump
+    ../ncdump/ncdump -h ./results/${f} > ./results/${f}.dmr.ncdump
     if test "x${TEST}" = x1 ; then
 	echo diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump
 	if ! diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump ; then

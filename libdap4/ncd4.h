@@ -33,6 +33,12 @@ else
 #define COUNTERTYPE unsigned long long
 #define COUNTERSIZE sizeof(COUNTERTYPE)
 
+/* Clear allocated memory (see e.g. d4data.c); Potentially costly*/
+#undef CLEARMEM
+
+/* Clear empty structure alignment space; Potentially costly, but probably less than  CLEARMEM */
+#define CLEARSTRUCT
+
 /**************************************************/
 /* Global state */
 
@@ -75,7 +81,7 @@ extern NCerror NCD4_getvarx(int ncid, int varid,
 
 /* From d4http.c */
 extern long NCD4_fetchhttpcode(CURL* curl);
-extern int NCD4_fetchurl_file(CURL* curl, const char* url, FILE* stream, off_t* sizep, long* filetime);
+extern int NCD4_fetchurl_file(CURL* curl, const char* url, FILE* stream, d4size_t* sizep, long* filetime);
 extern int NCD4_fetchurl(CURL* curl, const char* url, NCbytes* buf, long* filetime, struct credentials* creds);
 extern int NCD4_curlopen(CURL** curlp);
 extern void NCD4_curlclose(CURL* curl);
@@ -111,12 +117,12 @@ extern int NCD4_swapdata(NCD4meta*, NClist* topvars);
 
 /* From d4fix.c */
 extern int NCD4_delimit(NCD4meta*, NCD4node* var, void** offsetp);
-extern int NCD4_moveto(NCD4meta*, NCD4node* var, off_t count, void** offsetp, void* prevoffset, off_t prevcount);
+extern int NCD4_moveto(NCD4meta*, NCD4node* var, d4size_t count, void** offsetp);
 extern int NCD4_toposort(NCD4meta*);
 
 /* From d4data.c */
 extern int NCD4_processdata(NCD4meta*);
-extern int NCD4_fillinstance(NCD4meta*, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs);
+extern int NCD4_fillinstance(NCD4meta*, NCD4node* type, void** offsetp, void** dstp, NClist* blobs);
 extern int NCD4_getToplevelVars(NCD4meta* meta, NCD4node* group, NClist* toplevel);
 
 /* From d4util.c */
@@ -190,6 +196,12 @@ extern int nc__dap4(void);
 #define makenc4id(ncp,dap4id) (((dap4id) & GRP_ID_MASK) | getdap(ncp)->substrate.nc4id)
 /* and the inverse */
 #define makedap4id(ncp,nc4id) (((nc4id) & GRP_ID_MASK) | (ncp)->ext_ncid)
+
+#ifdef CLEARMEM
+#define d4alloc(n) (calloc(1,(size_t)(n)))
+#else
+#define d4alloc(n) (malloc((size_t)(n)))
+#endif
 
 #endif /*NCD4_H*/
 

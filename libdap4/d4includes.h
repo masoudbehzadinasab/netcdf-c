@@ -40,7 +40,6 @@
 #include "nclog.h"
 #include "ncdap.h"
 
-#include "d4bytes.h"
 #include "d4util.h"
 
 #include "ncd4types.h"

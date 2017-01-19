@@ -166,6 +166,7 @@ struct NCD4node {
     struct { /* sort == NCD4_DIMENSION */
 	long long size;
 	int isunlimited;
+	int isanonymous;
     } dim;
     struct { /* sort == NCD4_ECONST || sort == NCD4_ENUM */    
         union ATOMICS ecvalue;
@@ -181,12 +182,14 @@ struct NCD4node {
     } group;
     struct { /* Meta Info */
         int id; /* Relevant netcdf id; interpretation depends on sort; */
+	int isfixedsize; /* sort == NCD4_TYPE; Is this a fixed size (recursively) type? */
+	d4size_t dapsize; /* size of the type as stored in the dap data; will, as a rule,
+                             be same as memsize only for types <= NC_UINT64 */
         nc_type cmpdid; /*netcdf id for the compound type created for seq type */
 	size_t memsize; /* size of a memory instance without taking dimproduct into account,
                            but taking compound alignment into account  */
         d4size_t offset; /* computed structure field offset in memory */
         size_t alignment; /* computed structure field alignment in memory */
-	int isfixedsize; /* sort == NCD4_TYPE; Is this a fixed size (recursively) type? */
     } meta;
     struct { /* Data compilation info */
         int flags; /* See d4data for actual flags */
@@ -237,7 +240,13 @@ struct NCD4meta {
     NCD4CSUM checksummode;
     int checksumming; /* 1=>compute local checksum */
     int swap; /* 1 => swap data */
-    NClist* blobs;  /* various malloc'd chunks will be remembered here */
+#if 0
+    /* To avoid lost memory, we keep lists of malloc'd chunks that might need to
+       be reclaimed. */
+    NClist* blobs;  /* remember blobs that need to be reclaimed if there was an error;
+                           as a rule, these are the blobs constituting data being
+                           returned to the client */
+#endif
     /* Define some "global" (to a DMR) data */
     NClist* groupbyid; /* NClist<NCD4node*> indexed by groupid >> 16; this is global */
     NCD4node* _bytestring; /* If needed */
@@ -345,7 +354,7 @@ struct NCD4INFO {
 	char*   memory;   /* allocated memory if ONDISK is not set */
         char*   ondiskfilename; /* If ONDISK is set */
         FILE*   ondiskfile;     /* ditto */
-        off_t   datasize; /* size on disk or in memory */
+        d4size_t   datasize; /* size on disk or in memory */
         long dmrlastmodified;
         long daplastmodified;
     } data;

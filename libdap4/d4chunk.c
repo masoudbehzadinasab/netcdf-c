@@ -53,7 +53,7 @@ NCD4_dechunk(NCD4meta* metadata)
 	struct HDR hdr;
 	p = getheader(p,&hdr,metadata->serial.hostlittleendian);
 	if(hdr.flags & ERR_CHUNK) {
-	    metadata->serial.errdata = (char*)malloc(hdr.count+1);
+	    metadata->serial.errdata = (char*)d4alloc(hdr.count+1);
 	    if(metadata->serial.errdata == NULL) return THROW(NC_ENOMEM);
 	    memcpy(metadata->serial.errdata,p,hdr.count);
 	    metadata->serial.errdata[hdr.count] = '\0';
@@ -64,6 +64,9 @@ NCD4_dechunk(NCD4meta* metadata)
 	    metadata->serial.remotelittleendian = ((hdr.flags & LITTLE_ENDIAN_CHUNK) ? 1 : 0);
 	    metadata->serial.dmr = p;
 	    metadata->serial.dmr[hdr.count-1] = '\0';
+	    metadata->serial.dmr = strdup(metadata->serial.dmr);
+	    if(metadata->serial.dmr == NULL)
+		return THROW(NC_ENOMEM);
 	    metadata->serial.dmrsize = hdr.count;
 	    p += hdr.count;
 	    metadata->serial.dap = p;
@@ -90,6 +93,8 @@ NCD4_dechunk(NCD4meta* metadata)
 void
 NCD4_setdmr(NCD4meta* meta, const char* dmr)
 {
+    if(meta->serial.dmr != NULL)
+	free(meta->serial.dmr);
     meta->serial.dmr = strdup(dmr);
     meta->serial.dmrsize = strlen(dmr);
 }

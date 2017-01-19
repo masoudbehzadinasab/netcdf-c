@@ -45,6 +45,7 @@ static size_t getDimrefs(NCD4node* var, int* dimids);
 static size_t getDimsizes(NCD4node* var, size_t* dimsizes);
 static void reclaimNode(NCD4node* node);
 static d4size_t getpadding(d4size_t offset, size_t alignment);
+static int markdapsize(NCD4meta* meta);
 static int markfixedsize(NCD4meta* meta);
 static void savegroupbyid(NCD4meta*,NCD4node* group);
 static void savevarbyid(NCD4node* group, NCD4node* var);
@@ -68,11 +69,14 @@ NCD4_metabuild(NCD4meta* metadata, int ncid)
 	if(n->subsort > NC_MAX_ATOMIC_TYPE) continue;
 	n->meta.id = n->subsort;
         n->meta.isfixedsize = (n->subsort == NC_STRING ? 0 : 1);
+	if(n->subsort <= NC_STRING)
+	    n->meta.dapsize = NCD4_typesize(n->subsort);
     }
 
     /* Topo sort the set of all nodes */
     NCD4_toposort(metadata);
     markfixedsize(metadata);
+    markdapsize(metadata);
     /* Process the metadata state */
     ret = build(metadata,metadata->root);
     /* Done with the metadata*/
@@ -125,31 +129,37 @@ NCD4_reclaimMeta(NCD4meta* dataset)
     nullfree(dataset->error.otherinfo);
     nullfree(dataset->serial.errdata);
     nclistfree(dataset->groupbyid);
+#if 0
     for(i=0;i<nclistlength(dataset->blobs);i++) {
 	void* p = nclistget(dataset->blobs,i);
 	nullfree(p);
     }
     nclistfree(dataset->blobs);
+#endif
+    nclistfree(dataset->allnodes);
+    nullfree(dataset->serial.dmr);
     free(dataset);
 }
 
 static void
 reclaimNode(NCD4node* node)
 {
+    if(node == NULL) return;
     nullfree(node->name);
-    nullfree(node->group.dapversion);
-    nullfree(node->group.dmrversion);
-    nullfree(node->group.datasetname);
-    nclistfree(node->group.elements);
-    nclistfree(node->group.varbyid);
-    nclistfree(node->en.econsts);
-    nclistfreeall(node->attr.values);
     nclistfree(node->groups);
     nclistfree(node->vars);
     nclistfree(node->types);
     nclistfree(node->dims);
     nclistfree(node->attributes);
     nclistfree(node->maps);
+    nclistfreeall(node->xmlattributes);
+    nclistfreeall(node->attr.values);
+    nclistfree(node->en.econsts);
+    nclistfree(node->group.elements);
+    nullfree(node->group.dapversion);
+    nullfree(node->group.dmrversion);
+    nullfree(node->group.datasetname);
+    nclistfree(node->group.varbyid);
     nullfree(node->nc4.orig.name);
 }
 
@@ -378,28 +388,28 @@ buildMaps(NCD4meta* builder, NCD4node* var)
 {
     int i,ret = NC_NOERR;
     size_t count = nclistlength(var->maps);
+    char** memory = NULL;
+    char** p;
+    NCD4node* group;
 
+    if(count == 0) goto done;
+
+    /* Add an attribute to the parent variable
+       listing fqn's of all specified variables in map order*/
+    memory = (char**)d4alloc(count*sizeof(char*));
+    if(memory == NULL) {ret=NC_ENOMEM; goto done;}
+    p = memory;
     for(i=0;i<count;i++) {
-        char** memory;
-        char** p;
-	NCD4node* group;
-        /* Add an attribute to the parent variable
-           listing fqn's of all specified variables in map order*/
-        memory = (char**)malloc(count*sizeof(char*));
-        if(memory == NULL) {ret=NC_ENOMEM; goto done;}
-        p = memory;
-        for(i=0;i<count;i++) {
-            NCD4node* mapref = (NCD4node*)nclistget(var->maps,i);
-            char* fqn = NCD4_makeFQN(mapref);
-            *p++ = fqn;
-        }
-	group = NCD4_groupFor(var);
-	/* Make map info visible in the netcdf-4 file */
-	ret = nc_put_att(group->meta.id,var->meta.id,NC4TAGMAPS,NC_STRING,count,memory);
-        freeStringMemory(memory,count);
-        NCCHECK(ret);
+        NCD4node* mapref = (NCD4node*)nclistget(var->maps,i);
+	char* fqn = NCD4_makeFQN(mapref);
+        *p++ = fqn;
     }
+    /* Make map info visible in the netcdf-4 file */
+    group = NCD4_groupFor(var);
+    NCCHECK((nc_put_att(group->meta.id,var->meta.id,NC4TAGMAPS,NC_STRING,count,memory)));
 done:
+    if(memory != NULL)
+	freeStringMemory(memory,count);
     return THROW(ret);
 }
 
@@ -691,8 +701,9 @@ freeStringMemory(char** mem, int count)
 {
     int i;
     if(mem == NULL) return;
-    for(i=0;i<count;i++,mem++) {
-        if(*mem) free(*mem);
+    for(i=0;i<count;i++) {
+	char* p = mem[i];
+        if(p) free(p);
     }
     free(mem);
 }
@@ -719,7 +730,7 @@ compileAttrValues(NCD4meta* builder, NCD4node* basetype, NClist* values, void** 
     if(!ISTYPE(truebase->sort) || (truebase->meta.id > NC_MAX_ATOMIC_TYPE))
         FAIL(NC_EBADTYPE,"Illegal attribute type: %s",basetype->name);
     size = NCD4_typesize(truebase->meta.id);
-    if((memory = (char*)malloc(count*size))==NULL)
+    if((memory = (char*)d4alloc(count*size))==NULL)
         return THROW(NC_ENOMEM);
     p = memory;
     for(i=0;i<count;i++) {
@@ -757,6 +768,7 @@ copyAtomic(union ATOMICS* converter, nc_type type, size_t len, void* dst)
         memcpy(dst,&converter->f64[0],len); break;
     case NC_STRING:
         memcpy(dst,&converter->s[0],len); break;
+        converter->s[0] = NULL; /* avoid duplicate free */
     }/*switch*/
     return (((char*)dst)+len);
 }
@@ -880,7 +892,7 @@ backslashEscape(const char* s)
     char* escaped = NULL;
 
     len = strlen(s);
-    escaped = (char*)malloc(1+(2*len)); /* max is everychar is escaped */
+    escaped = (char*)d4alloc(1+(2*len)); /* max is everychar is escaped */
     if(escaped == NULL) return NULL;
     for(p=s,q=escaped;*p;p++) {
         char c = *p;
@@ -949,8 +961,9 @@ computeOffsets(NCD4meta* builder, NCD4node* cmpd)
 	if(ftype->subsort == NC_STRUCT) {
 	    /* Recurse */
 	    computeOffsets(builder, ftype);
-	    assert(ftype->meta.memsize > 0); size=ftype->meta.memsize;
-	    //size = ftype->NCD4_computeTypeSize(builder,ftype);
+	    assert(ftype->meta.memsize > 0);
+	    size=ftype->meta.memsize;
+	    alignment = ftype->meta.alignment;
 	} else {/* Size and alignment will already have been set */
 	    assert(ftype->meta.memsize > 0);
 	    alignment = ftype->meta.alignment;
@@ -982,7 +995,6 @@ computeOffsets(NCD4meta* builder, NCD4node* cmpd)
 	    //size = NCD4_computeTypeSize(builder,ftype);
 	}
 #endif
-
         if(alignment > largestalign)
 	    largestalign = alignment;
 	/* Add possible padding wrt to previous field */
@@ -1049,5 +1061,53 @@ getpadding(d4size_t offset, size_t alignment)
     d4size_t rem = (alignment==0?0:(offset % alignment));
     d4size_t pad = (rem==0?0:(alignment - rem));
     return pad;
+}
+
+/* Compute the dap data size for each type; note that this
+   is unlikely to be the same as the meta.memsize unless
+   the type is atomic and is <= NC_UINT64.
+*/
+
+static int
+markdapsize(NCD4meta* meta)
+{
+    int i,j;
+    for(i=0;i<nclistlength(meta->allnodes);i++) {
+	NCD4node* type = (NCD4node*)nclistget(meta->allnodes,i);
+	size_t totalsize;
+	if(type->sort != NCD4_TYPE) continue;
+	switch (type->subsort) {
+	case NC_STRUCT:
+	    totalsize = 0;
+            for(j=0;j<nclistlength(type->vars);j++) {  
+                NCD4node* field = (NCD4node*)nclistget(type->vars,j);
+		size_t size = field->basetype->meta.dapsize;
+	        if(size == 0) {
+		    totalsize = 0;
+		    break;
+	        } else
+		    totalsize += size;
+	    }
+	    type->meta.dapsize = totalsize;
+	    break;
+	case NC_SEQ:
+	    type->meta.dapsize = 0; /* has no fixed size */
+	    break;	
+	case NC_OPAQUE:
+	    type->meta.dapsize = type->opaque.size;
+	    break;	
+	case NC_ENUM:
+	    type->meta.dapsize = type->basetype->meta.dapsize;
+	    break;	
+	case NC_STRING:
+	    type->meta.dapsize = 0; /* has no fixed size */
+	    break;		
+	default: 
+	    assert(type->subsort <= NC_UINT64);
+	    /* Already assigned */
+	    break;
+	}
+    }
+    return NC_NOERR;
 }
 

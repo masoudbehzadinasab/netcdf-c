@@ -35,7 +35,7 @@
 /* set this only when building a DLL under MinGW */
 #undef DLL_NETCDF
 
-/* (Deprecated) if true, build DAP Client */
+/* if true, build DAP2 and DAP4 Client */
 #undef ENABLE_DAP
 
 /* if true, build DAP2 Client */

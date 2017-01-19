@@ -60,7 +60,7 @@ NCD4_dumpbytes(size_t size, const void* data0, int swap)
         else if(v.s[0] < ' ' || v.s[0] >= 0x7f) v.s[0] = '?';
         fprintf(stderr,"[%03d] %02x %03u %4d", i, v.u8[0], v.u8[0], v.i8[0]);
         fprintf(stderr," 0x%08x %12u %13d", v.u32[0], v.u32[0], v.i32[0]);
-        fprintf(stderr," 0x%04x %06u %7dd", v.u16[0], v.u16[0], v.i16[0]);
+        fprintf(stderr," 0x%04x %06u %7d", v.u16[0], v.u16[0], v.i16[0]);
         fprintf(stderr," '%s'\n",v.s);
 	fflush(stderr);
     }

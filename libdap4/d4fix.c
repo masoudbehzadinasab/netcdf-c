@@ -19,8 +19,8 @@ to do a variety of things.
 * (delimit)
   a. Delimit the top-level vars in the dap4data and also compute checksum
 
-* (fixedsizea)
-  a. mark types as fixed size or note; recursive on compound types.
+* (move)
+  a. Walk the (toplevel) var's data to get to the count'th instance.
 
 */
 
@@ -421,25 +421,18 @@ Assumes that var is not fixed size.
 */
 
 int 
-NCD4_moveto(NCD4meta* compiler, NCD4node* var, off_t count, void** offsetp, void* prevoffset, off_t prevcount)
+NCD4_moveto(NCD4meta* compiler, NCD4node* var, d4size_t count, void** offsetp)
 {
     int ret = NC_NOERR;
-    void* startoffset = NULL;
     void* offset = NULL;
-    off_t startcount = 0;
+    d4size_t startcount = 0;
     NCD4node* basetype = NULL;
 
     ASSERT((ISTOPLEVEL(var)));
 
-    if(prevoffset == NULL) {
-	startoffset = var->data.dap4data.memory;
-	startcount = 0;
-    } else {
-	startoffset = prevoffset;
-	startcount = prevcount;
-    }
+    offset = *offsetp;
+    startcount = 0;
     basetype = var->basetype;
-    offset = startoffset;
     for(;startcount < count;startcount++) {
 	if((ret=skipInstance(compiler,basetype,&offset)))
 	    goto done;
@@ -512,7 +505,7 @@ static int
 skipStructInstance(NCD4meta* compiler, NCD4node* type,  void** offsetp)
 {
     int ret = NC_NOERR;
-    d4size_t i;
+    d4size_t i,j;
     void* offset;
 
     offset = *offsetp;
@@ -521,7 +514,7 @@ skipStructInstance(NCD4meta* compiler, NCD4node* type,  void** offsetp)
         NCD4node* field = (NCD4node*)nclistget(type->vars,i);
 	NCD4node* ftype = field->basetype;
         d4size_t dimproduct = NCD4_dimproduct(field);	
-	for(i=0;i<dimproduct;i++) {
+	for(j=0;j<dimproduct;j++) {
 	    if((ret=skipInstance(compiler,ftype,&offset)))
 		goto done;
 	}
@@ -558,3 +551,4 @@ skipSeqInstance(NCD4meta* compiler, NCD4node* vlentype, void** offsetp)
 done:
     return THROW(ret);
 }
+

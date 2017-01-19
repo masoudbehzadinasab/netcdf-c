@@ -15,10 +15,6 @@ EXTRA_DIST = CMakeLists.txt
 
 LDADD=
 
-X=t_dmrdata.c \
-t_dmrmeta.c \
-t_dmrparse.c
-
 SRC= \
 d4crc32.c \
 d4curlfunctions.c \
@@ -40,7 +36,6 @@ d4util.c \
 d4odom.c \
 d4cvt.c \
 d4debug.c \
-d4bytes.c \
 ncd4dispatch.c \
 ezxml_extra.c \
 ezxml.c

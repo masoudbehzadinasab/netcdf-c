@@ -22,11 +22,11 @@ This code serves two purposes
 
 /***************************************************/
 /* Forwards */
-static int fillstring(NCD4meta*, void** offsetp, void* dst, NClist* blobs);
-static int fillopfixed(NCD4meta*, d4size_t opaquesize, void** offsetp, void* dst);
-static int fillopvar(NCD4meta*, NCD4node* type, void** offsetp, void* dst, NClist* blobs);
-static int fillstruct(NCD4meta*, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs);
-static int fillseq(NCD4meta*, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs);
+static int fillstring(NCD4meta*, void** offsetp, void** dstp, NClist* blobs);
+static int fillopfixed(NCD4meta*, d4size_t opaquesize, void** offsetp, void** dstp);
+static int fillopvar(NCD4meta*, NCD4node* type, void** offsetp, void** dstp, NClist* blobs);
+static int fillstruct(NCD4meta*, NCD4node* type, void** offsetp, void** dstp, NClist* blobs);
+static int fillseq(NCD4meta*, NCD4node* type, void** offsetp, void** dstp, NClist* blobs);
 
 /***************************************************/
 /* Macro define procedures */
@@ -43,10 +43,6 @@ static unsigned int debugcrc32(unsigned int crc, const void *buf, size_t size)
 #define CRC32 debugcrc32
 #else
 #define CRC32 NCD4_crc32
-#endif
-
-#if 0
-#define D4MALLOC(n) d4bytesalloc(d4bytes,(n))
 #endif
 
 #define ISTOPLEVEL(var) ((var)->container == NULL || (var)->container->sort == NCD4_GROUP)
@@ -141,98 +137,147 @@ Assumes that NCD4_processdata has been called.
 */
 
 int
-NCD4_fillinstance(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs)
+NCD4_fillinstance(NCD4meta* meta, NCD4node* type, void** offsetp, void** dstp, NClist* blobs)
 {
     int ret = NC_NOERR;
     void* offset = *offsetp;
+    void* dst = *dstp;
+    d4size_t memsize = type->meta.memsize;
+    d4size_t dapsize = type->meta.dapsize;
 
-    /* If the type is fixed size, then just copy it */
-    if(type->subsort <= NC_UINT64) {
-	memcpy(dst,offset,instancesize);
-	offset += instancesize;
-    } else if(type->subsort == NC_ENUM) {
-	memcpy(dst,offset,instancesize);
-	offset += instancesize;
-    } else if(type->subsort == NC_STRING) {/* oob strings */
-	if((ret=fillstring(meta,&offset,dst,blobs)))
-	    FAIL(ret,"fillinstance");
-    } else if(type->subsort == NC_OPAQUE) {
-	if(type->opaque.size > 0) {
-	    /* We know the size and its the same for all instances */
-	    if((ret=fillopfixed(meta,type->opaque.size,&offset,dst)))
+    /* If the type is fixed size, then just copy it  */
+    if(type->subsort <= NC_UINT64 || type->subsort == NC_ENUM) {
+	/* memsize and dapsize are the same */
+	assert(memsize == dapsize);
+	memcpy(dst,offset,dapsize);
+	offset += dapsize;
+    } else switch(type->subsort) {
+        case NC_STRING: /* oob strings */
+	    if((ret=fillstring(meta,&offset,&dst,blobs)))
 	        FAIL(ret,"fillinstance");
-	} else {
-	    /* Size differs per instance, so we need to convert each opaque to a vlen */
-	    if((ret=fillopvar(meta,type,&offset,dst,blobs)))
-	        FAIL(ret,"fillinstance");
-	}
-    } else if(type->subsort == NC_STRUCT) {
-	if((ret=fillstruct(meta,type,instancesize,&offset,dst,blobs)))
+	    break;
+	case NC_OPAQUE:
+	    if(type->opaque.size > 0) {
+	        /* We know the size and its the same for all instances */
+	        if((ret=fillopfixed(meta,type->opaque.size,&offset,&dst)))
+	            FAIL(ret,"fillinstance");
+   	    } else {
+	        /* Size differs per instance, so we need to convert each opaque to a vlen */
+	        if((ret=fillopvar(meta,type,&offset,&dst,blobs)))
+	            FAIL(ret,"fillinstance");
+	    }
+	    break;
+	case NC_STRUCT:
+	    if((ret=fillstruct(meta,type,&offset,&dst,blobs)))
+                FAIL(ret,"fillinstance");
+	    break;
+	case NC_SEQ:
+	    if((ret=fillseq(meta,type,&offset,&dst,blobs)))
+                FAIL(ret,"fillinstance");
+	    break;
+	default:
+	    ret = NC_EINVAL;
             FAIL(ret,"fillinstance");
-    } else if(type->subsort == NC_SEQ) {
-	if((ret=fillseq(meta,type,instancesize,&offset,dst,blobs)))
-            FAIL(ret,"fillinstance");
-    } else {
-	ret = NC_EINVAL;
-        FAIL(ret,"fillinstance");
     }
+    *dstp = dst;
     *offsetp = offset; /* return just past this object in dap data */
 done:
     return THROW(ret);
 }
 
 static int
-fillstruct(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs)
+fillstruct(NCD4meta* meta, NCD4node* type, void** offsetp, void** dstp, NClist* blobs)
 {
     int i,ret = NC_NOERR;
     void* offset = *offsetp;
+    void* dst = *dstp;
  
+#ifdef CLEARSTRUCT
+    /* Avoid random data within aligned structs */
+    d4size_t prevoffset = 0;    
+    memset(dst,0,type->meta.memsize);
+#endif
+
     /* Walk and read each field taking alignments into account */
     for(i=0;i<nclistlength(type->vars);i++) {
 	NCD4node* field = nclistget(type->vars,i);
 	NCD4node* ftype = field->basetype;
 	void* fdst = dst + field->meta.offset;
-	d4size_t fieldsize = ftype->meta.memsize;
-	if((ret=NCD4_fillinstance(meta,ftype,fieldsize,&offset,fdst,blobs)))
+	if((ret=NCD4_fillinstance(meta,ftype,&offset,&fdst,blobs)))
             FAIL(ret,"fillstruct");
     }
+    dst += type->meta.memsize;
+    *dstp = dst;
     *offsetp = offset;    
 done:
     return THROW(ret);
 }
 
 static int
-fillseq(NCD4meta* meta, NCD4node* type, d4size_t instancesize, void** offsetp, void* dst, NClist* blobs)
+fillseq(NCD4meta* meta, NCD4node* type, void** offsetp, void** dstp, NClist* blobs)
 {
     int ret = NC_NOERR;
-    return ret;
+    d4size_t i,recordcount;    
+    void* offset;
+    nc_vlen_t* dst;
+    NCD4node* vlentype;
+    d4size_t recordsize;
+
+    offset = *offsetp;
+
+    dst = (nc_vlen_t*)*dstp;
+    vlentype = type->basetype;    
+    recordsize = vlentype->meta.memsize;
+
+    /* Get record count (remember, it is already properly swapped) */
+    recordcount = GETCOUNTER(offset);
+    SKIPCOUNTER(offset);
+    dst->len = (size_t)recordcount;
+
+    /* compute the required memory */
+    dst->p = d4alloc(recordsize*recordcount);
+    if(dst->p == NULL) 
+	FAIL(NC_ENOMEM,"fillseq");
+
+    for(i=0;i<recordcount;i++) {
+	/* Read each record instance */
+	void* recdst = (dst->p) + (recordsize * i);
+	if((ret=NCD4_fillinstance(meta,vlentype,&offset,&recdst,blobs)))
+	    FAIL(ret,"fillseq");
+    }
+    dst++;
+    *dstp = dst;
+    *offsetp = offset;
+done:
+    return THROW(ret);
 }
 
 /*
 Extract and oob a single string instance
 */
 static int
-fillstring(NCD4meta* meta, void** offsetp, void* dst, NClist* blobs)
+fillstring(NCD4meta* meta, void** offsetp, void** dstp, NClist* blobs)
 {
     int ret = NC_NOERR;
     d4size_t count;    
     void* offset = *offsetp;
-    char** stringp;
+    char** dst = *dstp;
     char* q;
 
     /* Get string count (remember, it is already properly swapped) */
     count = GETCOUNTER(offset);
     SKIPCOUNTER(offset);
     /* Transfer out of band */
-    q = (char*)malloc(count+1);
+    q = (char*)d4alloc(count+1);
     if(q == NULL)
 	{FAIL(NC_ENOMEM,"out of space");}
     nclistpush(blobs,q);
     memcpy(q,offset,count);
     q[count] = '\0';
     /* Write the pointer to the string */
-    stringp = (char**)dst;
-    *stringp = q;
+    *dst = q;
+    dst++;
+    *dstp = dst;    
     offset += count;
     *offsetp = offset;
 done:
@@ -240,11 +285,12 @@ done:
 }
 
 static int
-fillopfixed(NCD4meta* meta, d4size_t opaquesize, void** offsetp, void* dst)
+fillopfixed(NCD4meta* meta, d4size_t opaquesize, void** offsetp, void** dstp)
 {
     int ret = NC_NOERR;
     d4size_t count;
     void* offset = *offsetp;
+    void* dst = *dstp;
 
     /* Get opaque count */
     count = GETCOUNTER(offset);
@@ -254,6 +300,8 @@ fillopfixed(NCD4meta* meta, d4size_t opaquesize, void** offsetp, void* dst)
         FAIL(NC_EVARSIZE,"Expected opaque size to be %lld; found %lld",opaquesize,count);
     /* move */
     memcpy(dst,offset,count);
+    dst += count;
+    *dstp = dst;
     offset += count;
     *offsetp = offset;
 done:
@@ -266,12 +314,13 @@ We treat as if it was (in cdl) ubyte(*).
 */
 
 static int
-fillopvar(NCD4meta* meta, NCD4node* type, void** offsetp, void* dst, NClist* blobs)
+fillopvar(NCD4meta* meta, NCD4node* type, void** offsetp, void** dstp, NClist* blobs)
 {
     int ret = NC_NOERR;
     d4size_t count;
     nc_vlen_t* vlen;
     void* offset = *offsetp;
+    void* dst = *dstp;
     char* q;
 
     /* alias dst format */
@@ -281,12 +330,14 @@ fillopvar(NCD4meta* meta, NCD4node* type, void** offsetp, void* dst, NClist* blo
     count = GETCOUNTER(offset);
     SKIPCOUNTER(offset);
     /* Transfer out of band */
-    q = (char*)malloc(count);
+    q = (char*)d4alloc(count);
     if(q == NULL) FAIL(NC_ENOMEM,"out of space");
     nclistpush(blobs,q);
     memcpy(q,offset,count);
     vlen->p = q;
     vlen->len = (size_t)count;
+    dst += sizeof(nc_vlen_t);
+    *dstp = dst;
     offset += count;
     *offsetp = offset;
 done:

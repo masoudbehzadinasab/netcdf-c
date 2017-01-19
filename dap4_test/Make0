@@ -1,5 +1,5 @@
 # Test c output
-T=t_dmrparse
+T=test_parse
 #ARGS=../dap4_test/testfiles/test_atomic_types.nc.dmr
 #ARGS=./tat.nc.dmr
 ARGS=./tat.dmr
@@ -12,13 +12,15 @@ V=drmemory.exe --
 
 CFLAGS=-Wall -g -O0 -I.. -I../include -I../libdap4
 
+SHELL=/bin/bash
+
 CC=gcc
 LDFLAGS=../liblib/.libs/libnetcdf.a -L/usr/local/lib -lhdf5_hl -lhdf5 -lz  -ldl -lm -lcurl
 
 LLP=/usr/local/lib:${LD_LIBRARY_PATH}
 
 all:: t.exe
-	sh ./t_dmrparse.sh
+	sh ./test_parse.sh
 
 g::
 	export LD_LIBRARY_PATH=${LLP}; export CFLAGS; export LDFLAGS; \
@@ -57,3 +59,12 @@ tmp.sh::
 testfiles:: tmp.sh
 	sh -x ./tmp.sh
 
+#U=test_ncuri.c ${LDFLAGS}
+U=test_ncuri.c ../libdispatch/ncuri.c ../libdispatch/nclist.c ../libdispatch/ncbytes.c
+
+x:
+	pushd .. ; ${MAKE} ; popd
+
+uri::
+	${CC} -o test_ncuri ${CFLAGS} ${U}
+	gdb --args ./test_ncuri

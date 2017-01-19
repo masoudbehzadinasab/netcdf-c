@@ -6,10 +6,10 @@ quiet=0
 leakcheck=0
 timing=0
 
-# Figure our dst server
+# Figure our dst server; if none, then just stop
 DTS=`../liblib/findtestserver dap2 dts`
 if test "x$DTS" = "x" ; then
-echo "cannot locate test server for dts"
+echo "WARNING: Cannot locate test server for dts"
 exit
 fi
 

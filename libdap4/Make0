@@ -1,41 +1,43 @@
-# d:/git/dap4/dap4_test/daptestfiles/test_anon_dim.2.syn.dap
-# Test c output
-
 P=data
 
-V=valgrind --leak-check=full
+V=valgrind --leak-check=full --num-callers=100
 G=gdb --args
 
-X=test_unlim1.nc
-I=d:/git/dap4/dap4_test/daptestfiles/${X}
+ROOT=${HOME}/git/dap4
+#ROOT=d:/git/dap4
+
+X=test_sequence_2.syn
+I=${ROOT}/dap4_test/daptestfiles/${X}
 O=./t.nc
 
 ifeq ($P, parse)
-T=t_dmrparse.c
+T=../dap4_test/test_parse.c
 endif
 ifeq ($P, parser)
-T=t_dmrparse.c
+T=../dap4_test/test_parse.c
 endif
 ifeq ($P, meta)
-T=t_dmrmeta.c
+T=../dap4_test/test_meta.c
 endif
 ifeq ($P, data)
-T=t_dmrdata.c
+T=../dap4_test/test_data.c
 endif
 
-CFLAGS=-Wall -g -O0 -I.. -I../include -I../libdap4
+CFLAGS=-Wall -g -O0 -I.. -I../include -I../libdap4 -I../dap4_test
 
 CC=gcc
 LDFLAGS=../liblib/.libs/libnetcdf.a -L/usr/local/lib -lhdf5_hl -lhdf5 -lz  -ldl -lm -lcurl
 
 LLP=/usr/local/lib:${LD_LIBRARY_PATH}
 
+SHELL=/bin/bash
+
 ifeq ($P, meta)
 all:: clean build
 else
 all:: clean mkt
 	./t $I $O
-	ncdump $O	
+	../ncdump/ncdump $O	
 endif
 
 g:: mkt
@@ -48,7 +50,7 @@ v:: mkt
 
 build:: mkt
 	./t $I $O
-	ncdump -h $O	
+	../ncdump/ncdump -h $O	
 	
 diff:: mkt
 	rm -fr ./j
@@ -74,18 +76,6 @@ cpp::
 x:
 	pushd .. ; ${MAKE} ; popd
 
-DMR=t_dmr.h t_dmrdata.c t_dmrmeta.c t_dmrparse.c
-
-dmr:: ../dap4_test/t_dmr*.[ch]
-	rm -f t_dmr*.[ch]
-	cp $? .
-
-testdmr:: 
-	for f in ${DMR} ; do \
-	  echo "[$$f]" ; \
-	  diff -wBb $$f ../dap4_test/$$f ; \
-	done
-
 D=test_struct_type
 TF=../dap4_test/testfiles/${D}
 debug::
@@ -99,3 +89,4 @@ debug::
 
 gdb:: mkt
 	gdb --args ../ncdump/ncdump '[log][dap4]http://localhost:8081/d4ts/${D}.nc'
+

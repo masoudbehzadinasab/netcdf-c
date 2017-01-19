@@ -7,17 +7,16 @@ FILE(GLOB COPY_FILES ${CMAKE_CURRENT_SOURCE_DIR}/*.sh)
 
 FILE(COPY ${COPY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/ FILE_PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE)
 
-IF(ENABLE_DAP4_REMOTE_TESTS)
-  ADD_EXECUTABLE(nctestserver nctestserver.c)
-  TARGET_LINK_LIBRARIES(nctestserver netcdf ${ALL_TLL_LIBS})
-ENDIF()
-
 IF(ENABLE_TESTS)
+
+  BUILD_BIN_TEST_NO_PREFIX(findtestserver)
+
   # Base tests
   # The tests are set up as a combination of shell scripts and executables that
   # must be run in a particular order. It is painful but will use macros to help
   # keep it from being too bad.
 
+  BUILD_BIN_TEST_NO_PREFIX(t_ncuri)
   BUILD_BIN_TEST_NO_PREFIX(t_dmrparse)
   BUILD_BIN_TEST_NO_PREFIX(t_dmrmeta)
   BUILD_BIN_TEST_NO_PREFIX(t_dmrdata)

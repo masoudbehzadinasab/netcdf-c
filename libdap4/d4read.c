@@ -4,7 +4,7 @@
 /*Forward*/
 static int readpacket(NCD4INFO* state, NCURI*, NCbytes*, NCD4mode, long*);
 static int readfile(const NCURI*, const char* suffix, NCbytes* packet);
-static int readfiletofile(const NCURI*, const char* suffix, FILE* stream, off_t*);
+static int readfiletofile(const NCURI*, const char* suffix, FILE* stream, d4size_t*);
 
 int
 NCD4_readDMR(NCD4INFO* state)
@@ -110,7 +110,7 @@ fail:
 }
 
 static int
-readfiletofile(const NCURI* uri, const char* suffix, FILE* stream, off_t* sizep)
+readfiletofile(const NCURI* uri, const char* suffix, FILE* stream, d4size_t* sizep)
 {
     int stat = NC_NOERR;
     NCbytes* packet = ncbytesnew();
@@ -147,8 +147,8 @@ readfile(const NCURI* uri, const char* suffix, NCbytes* packet)
     char buf[1024];
     int fd = -1;
     int flags = 0;
-    off_t filesize = 0;
-    off_t totalread = 0;
+    d4size_t filesize = 0;
+    d4size_t totalread = 0;
     NCbytes* tmp = ncbytesnew();
     char* filename = NULL;
 
@@ -167,17 +167,17 @@ readfile(const NCURI* uri, const char* suffix, NCbytes* packet)
 	return THROW(NC_ENOTFOUND);
     }
     /* Get the file size */
-    filesize = lseek(fd,(off_t)0,SEEK_END);
+    filesize = lseek(fd,(d4size_t)0,SEEK_END);
     if(filesize < 0) {
 	stat = NC_EIO;
 	nclog(NCLOGERR,"lseek failed: %s",filename);
 	goto done;
     }
     /* Move file pointer back to the beginning of the file */
-    (void)lseek(fd,(off_t)0,SEEK_SET);
+    (void)lseek(fd,(d4size_t)0,SEEK_SET);
     stat = NC_NOERR;
     for(totalread=0;;) {
-	off_t count = (off_t)read(fd,buf,sizeof(buf));
+	d4size_t count = (d4size_t)read(fd,buf,sizeof(buf));
 	if(count == 0)
 	    break; /*eof*/
 	else if(count <  0) {

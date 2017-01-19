@@ -326,6 +326,10 @@ AC_MSG_CHECKING([whether DAP2+DAP4 client is to enabled])
 AC_ARG_ENABLE([dap],[AS_HELP_STRING([--disable-dap],[disable DAP2 and DAP4 clients.])])
 test "x$enable_dap" = xno || enable_dap=yes
 AC_MSG_RESULT($enable_dap)
+if test "x$enable_dap" = "xyes" ; then
+    enable_dap4=yes
+    enable_dap2=yes
+fi
 
 AC_MSG_CHECKING([whether DAP2 client is ensabled])
 AC_ARG_ENABLE([dap2],[AS_HELP_STRING([--disable-dap2],[disable DAP2 clients.])])
@@ -427,15 +431,19 @@ AC_ARG_WITH([testservers],
 msg="$REMOTETESTSERVERS"
 if test "x$REMOTETESTSERVERS" = xno ; then
 msg="localhost:8080,localhost:8081,remotetest.unidata.ucar.edu (default)"
-REMOTETESTSERVERS=localhost:8081,localhost:8080,remotetest.unidata.ucar.edu
+REMOTETESTSERVERS=localhost:8081,localhost:8080,remotetest.unidata.ucar.edu,jetstream.unidata.ucar.edu
 fi
 AC_MSG_RESULT([$msg])
 AC_DEFINE_UNQUOTED([REMOTETESTSERVERS], ["$REMOTETESTSERVERS"], [the testservers for remote tests.])
 
 # Set the config.h flags
+if test "x$enable_dap2" = xyes -a "x$enable_dap4" = xyes; then
+   enable_dap=yes
+   AC_DEFINE([ENABLE_DAP], [1], [if true, build DAP2 and DAP4 Client])
+fi
+
 if test "x$enable_dap2" = xyes; then
    AC_DEFINE([USE_DAP], [1], [(Deprecated) if true, build DAP Client])
-   AC_DEFINE([ENABLE_DAP], [1], [(Deprecated) if true, build DAP Client])
    AC_DEFINE([ENABLE_DAP2], [1], [if true, build DAP2 Client])
 fi
 if test "x$enable_dap4" = xyes; then
@@ -1167,6 +1175,8 @@ AM_CONDITIONAL(BUILD_DAP, [test "x$enable_dap2" = xyes])
 AM_CONDITIONAL(USE_DAP, [test "x$enable_dap2" = xyes]) # Alias
 AM_CONDITIONAL(ENABLE_DAP2, [test "x$enable_dap2" = xyes])
 AM_CONDITIONAL(ENABLE_DAP4, [test "x$enable_dap4" = xyes])
+# Convenient to know if either is being built
+AM_CONDITIONAL(ENABLE_DAP2OR4, [test "x$enable_dap2" = xyes -o "x$enable_dap4" = xyes])
 AM_CONDITIONAL(ENABLE_DAP_REMOTE_TESTS, [test "x$enable_dap_remote_tests" = xyes])
 AM_CONDITIONAL(ENABLE_DAP4_REMOTE_TESTS, [test "x$enable_dap4_remote_tests" = xyes])
 AM_CONDITIONAL(ENABLE_DAP_AUTH_TESTS, [test "x$enable_dap_auth_tests" = xyes])

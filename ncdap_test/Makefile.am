@@ -7,17 +7,19 @@
 include $(top_srcdir)/lib_flags.am
 
 LDADD = ${top_builddir}/liblib/libnetcdf.la
+AM_CPPFLAGS += -DTOPSRCDIR=${abs_top_srcdir}
 AM_CPPFLAGS += -I$(top_builddir)/liblib
 
 # Set up the tests; do the .sh first, then .c
 check_PROGRAMS =
 TESTS =
+TESTS_ENVIRONMENT=TOPSRCDIR=${abs_top_srcdir}
 
 TESTS += tst_ncdap3.sh
 
-t_dap3a_SOURCES = t_dap3a.c
-test_cvt3_SOURCES = test_cvt.c
-test_vara_SOURCES = test_vara.c
+t_dap3a_SOURCES = t_dap3a.c t_srcdir.h
+test_cvt3_SOURCES = test_cvt.c t_srcdir.h
+test_vara_SOURCES = test_vara.c t_srcdir.h
 
 check_PROGRAMS += t_dap3a test_cvt3 test_vara
 
@@ -38,11 +40,11 @@ if ENABLE_DAP_LONG_TESTS
  TESTS += tst_longremote3.sh
 endif
 
-test_partvar_SOURCES = test_partvar.c ${top_srcdir}/liblib/nctestserver.c
-test_varm3_SOURCES = test_varm3.c ${top_srcdir}/liblib/nctestserver.c
-test_nstride_cached_SOURCES = test_nstride_cached.c ${top_srcdir}/liblib/nctestserver.c
+test_partvar_SOURCES = test_partvar.c nctestserver.c
+test_varm3_SOURCES = test_varm3.c nctestserver.c
+test_nstride_cached_SOURCES = test_nstride_cached.c nctestserver.c
 
-#t_auth_SOURCES = t_auth.c ${top_srcdir}/liblib/nctestserver.c
+#t_auth_SOURCES = t_auth.c nctestserver.c
 t_misc_SOURCES = t_misc.c
 
 TESTS += test_varm3
@@ -97,7 +99,7 @@ EXTRA_DIST = tst_ncdap3.sh tst_ncdap4.sh \
 	     t_dap.c CMakeLists.txt tst_formatx.sh testauth.sh testurl.sh \
 			t_ncf330.c
 
-CLEANFILES = test_varm3 test_cvt3 results/*.dmp results/*.das results/*.dds datadds* t_dap3a test_nstride_cached
+CLEANFILES = test_varm3 test_cvt3 results/*.dmp results/*.das results/*.dds datadds* t_dap3a test_nstride_cached *.exe
 
 if USE_NETCDF4
 CLEANFILES += test_cvt4 t_dap4
@@ -119,3 +121,9 @@ BUILT_SOURCES = .dodsrc
 	echo "#DODSRC" >.dodsrc
 
 DISTCLEANFILES = .dodsrc results/* results
+
+# Build the findtestserver program, but do not install
+bin_PROGRAMS =
+bin_PROGRAMS += findtestserver 
+findtestserver_SOURCES = findtestserver.c nctestserver.c
+

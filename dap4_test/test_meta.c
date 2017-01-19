@@ -4,26 +4,26 @@
  *********************************************************************/
 
 /**
-This provides a simple dap4  metadata -> xml printer.
-Used to test the parser
+Test the netcdf-4 metadata building process.
 */
 
-#include "t_dmr.h"
+#include "test_common.h"
 
 int
 main(int argc, char** argv)
 {
     int ret = NC_NOERR;
 
-    setup(TDMR_PARSE,argc,argv);
+    setup(TDMR_META,argc,argv);
+
+#ifdef DEBUG
+    fprintf(stderr,"t_dmrmeta %s -> %s\n",infile,outfile);
+#endif
 
     if((ret = NCD4_parse(metadata))) goto done;
-    ret = NCD4_print(metadata,output);
-    ncbytesnull(output);
-    if(ret == NC_NOERR) {
-        fprintf(stdout,"%s\n",ncbytescontents(output));
-	fflush(stdout);
-    }
+    if((ret = NCD4_metabuild(metadata,ncid))) goto done;
+
 done:
     return cleanup(ret);
 }
+

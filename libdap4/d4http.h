@@ -10,7 +10,7 @@ extern int curlopen(CURL** curlp);
 extern void curlclose(CURL*);
 
 extern ncerror ncd4_fetchurl(CURL*, const char*, NCbytes*, long*, struct credentials*);
-extern ncerror ncd4_fetchurl_file(CURL*, const char*, FILE*, off_t*, long*);
+extern ncerror ncd4_fetchurl_file(CURL*, const char*, FILE*, d4size_t*, long*);
 
 extern long ncd4_fetchhttpcode(CURL* curl);
 

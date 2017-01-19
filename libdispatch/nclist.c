@@ -47,16 +47,17 @@ nclistfree(NClist* l)
   return TRUE;
 }
 
+/*
+Free a list and its contents
+*/
 int
 nclistfreeall(NClist* l)
 {
   int i;
   if(l == NULL) return TRUE;
-  if(l->length <= l->alloc) {
-    for(i=0;i<l->length;i++) {
+  for(i=0;i<l->length;i++) {
       void* value = l->content[i];
       if(value != NULL) free(value);
-    }
   }
   return nclistfree(l);
 }

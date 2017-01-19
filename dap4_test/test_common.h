@@ -158,6 +158,8 @@ cleanup(int ret)
         else
             ret = nc_close(ncid);
     }	
+    if(metadata->controller != NULL)
+	free(metadata->controller);
     NCD4_reclaimMeta(metadata);
     ncbytesfree(input);
     ncbytesfree(output);

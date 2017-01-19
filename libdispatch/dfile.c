@@ -1637,7 +1637,7 @@ stored.
 \returns ::NC_NOERR No error.
 */
 int
-NC_create(const char *path0, int cmode, size_t initialsz,
+NC_create(const char *path, int cmode, size_t initialsz,
 	  int basepe, size_t *chunksizehintp, int useparallel,
 	  void* parameters, int *ncidp)
 {
@@ -1648,12 +1648,11 @@ NC_create(const char *path0, int cmode, size_t initialsz,
    int model = NC_FORMATX_UNDEFINED; /* one of the NC_FORMATX values */
    int isurl = 0;   /* dap or cdmremote or neither */
    int xcmode = 0; /* for implied cmode flags */
-   char* path; /* in case we need to modify it (e.g. url) */
+   char* newpath = NULL;
 
    TRACE(nc_create);
-   if(path0 == NULL)
+   if(path == NULL)
 	return NC_EINVAL;
-   path = strdup(path0); /* in case we need to modify it (e.g. url) */
    /* Initialize the dispatch table. The function pointers in the
     * dispatch table will depend on how netCDF was built
     * (with/without netCDF-4, DAP, CDMREMOTE). */
@@ -1670,15 +1669,10 @@ NC_create(const char *path0, int cmode, size_t initialsz,
 	return NC_ENFILE;
 #endif
 
-    {
-	char* newpath = NULL;
-        model = NC_urlmodel(path,cmode,&newpath);
-        isurl = (model != 0);
-	if(isurl) {
-	    nullfree(path);
-	    path = newpath;
-	}
-    }
+    model = NC_urlmodel(path,cmode,&newpath);
+    isurl = (model != 0);
+    if(!isurl)
+	newpath = strdup(path);
 
    /* Look to the incoming cmode for hints */
    if(model == NC_FORMATX_UNDEFINED) {
@@ -1736,9 +1730,6 @@ NC_create(const char *path0, int cmode, size_t initialsz,
    if((cmode & NC_MPIIO) && (cmode & NC_MPIPOSIX))
       return  NC_EINVAL;
 
-#ifdef OBSOLETE
-   dispatcher = NC_get_dispatch_override();
-#endif
    if (dispatcher == NULL)
    {
 
@@ -1760,8 +1751,8 @@ NC_create(const char *path0, int cmode, size_t initialsz,
    }
 
    /* Create the NC* instance and insert its dispatcher */
-   stat = new_NC(dispatcher,path,cmode,&ncp);
-   nullfree(path); path = NULL; /* no longer need path */
+   stat = new_NC(dispatcher,newpath,cmode,&ncp);
+   nullfree(newpath); newpath = NULL; /* no longer needed */
    
    if(stat) return stat;
 

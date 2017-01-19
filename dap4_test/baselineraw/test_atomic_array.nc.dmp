@@ -24,3 +24,28 @@ variables:
 
 // global attributes:
 		:_DAP4_Little_Endian = 1UB ;
+data:
+
+ vu8 =
+  255, 1, 2,
+  3, 4, 5 ;
+
+ v16 = 1, 2, 3, 4 ;
+
+ vu32 =
+  5, 4, 3,
+  2, 1, 0 ;
+
+ vd = 17.9, 1024.8 ;
+
+ vc = "@&" ;
+
+ vs =
+  "hello\tworld", "\r\n",
+  "Καλημέα", "abc" ;
+
+ vo =
+  {1, 35, 69, 103, 137, 171, 205, 239}, {171, 205, 239, 0, 0, 0, 0, 0} ;
+
+ primary_cloud = Clear, Stratus, Clear, Cumulonimbus, _ ;
+}

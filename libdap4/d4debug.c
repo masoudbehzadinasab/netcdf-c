@@ -112,7 +112,7 @@ NCD4_debugcopy(NCD4INFO* info)
 	void* memory = NULL;
 
 	varsize = type->meta.memsize * NCD4_dimproduct(var);
-	memory = malloc(varsize);
+	memory = d4alloc(varsize);
         if(memory == NULL)
 	    {ret = NC_ENOMEM; goto done;}		
 	{

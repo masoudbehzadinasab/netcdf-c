@@ -13,5 +13,5 @@ variables:
 		:_DAP4_Little_Endian = 1UB ;
 data:
 
- v1 = {} ;
+ v1 = {{17}, {19}, {21}} ;
 }

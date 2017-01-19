@@ -35,7 +35,7 @@ NCD4_fetchhttpcode(CURL* curl)
 
 int
 NCD4_fetchurl_file(CURL* curl, const char* url, FILE* stream,
-                off_t* sizep, long* filetime)
+                d4size_t* sizep, long* filetime)
 {
     int ret = NC_NOERR;
     CURLcode cstat = CURLE_OK;
@@ -136,7 +136,7 @@ NCD4_fetchurl(CURL* curl, const char* url, NCbytes* buf, long* filetime,
     ncbytesappend(buf, '\0');
     ncbytessetlength(buf, len); /* dont count null in buffer size*/
 #ifdef D4DEBUG
-    nclog(NCLOGNOTE,"buffersize: %lu bytes",(off_t)ncbyteslength(buf));
+    nclog(NCLOGNOTE,"buffersize: %lu bytes",(d4size_t)ncbyteslength(buf));
 #endif
     return THROW(ret);
 
@@ -170,7 +170,7 @@ WriteFileCallback(void* ptr, size_t size, size_t nmemb, void* data)
         nclog(NCLOGWARN,"WriteFileCallback: zero sized write");
     }
 #ifdef PROGRESS
-    nclog(NCLOGNOTE,"callback: %lu bytes",(off_t)realsize);
+    nclog(NCLOGNOTE,"callback: %lu bytes",(d4size_t)realsize);
 #endif
     return count;
 }
@@ -189,7 +189,7 @@ WriteMemoryCallback(void *ptr, size_t size, size_t nmemb, void *data)
     }
     ncbytesappendn(buf, ptr, realsize);
 #ifdef PROGRESS
-    nclog(NCLOGNOTE,"callback: %lu bytes",(off_t)realsize);
+    nclog(NCLOGNOTE,"callback: %lu bytes",(d4size_t)realsize);
 #endif
     return realsize;
 }

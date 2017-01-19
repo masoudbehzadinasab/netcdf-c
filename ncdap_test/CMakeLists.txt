@@ -14,6 +14,8 @@ IF(ENABLE_TESTS)
   # keep it from being too bad.
   # Binary Test Macro
 
+  BUILD_BIN_TEST_NO_PREFIX(findtestserver)
+
   add_sh_test(ncdap tst_ncdap3)
 
   IF(NOT MSVC)

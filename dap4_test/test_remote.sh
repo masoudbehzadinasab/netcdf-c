@@ -53,7 +53,8 @@ test_struct_array.syn
 
 TESTSERVER=`../liblib/findtestserver dap4 d4ts`
 if test "x$TESTSERVER" = x ; then
-failure "Cannot find testserver" exit
+failure "WARNING: Cannot find d4ts testserver"
+exit
 fi
 
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINER}/*.dmp ; fi
@@ -65,7 +66,7 @@ for f in $F ; do
     if test "x$NOCSUM" = x1; then
 	URL="[ucar.checksummode=none]${URL}"
     fi
-    if ! ../ncdump/ncdump ${URL} > ./results/${f}.dmp; then
+    if ! ${VG} ../ncdump/ncdump ${URL} > ./results/${f}.dmp; then
         failure "${URL}"
     fi
     if test "x${TEST}" = x1 ; then

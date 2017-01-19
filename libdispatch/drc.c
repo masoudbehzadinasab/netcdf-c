@@ -245,7 +245,7 @@ rc_compile(const char* path)
     NCTripleStore* rc;
 
     rc = &ncrc_store;
-    memset(rc,sizeof(NCTripleStore),0);
+    memset(rc,0,sizeof(NCTripleStore));
     rc->triples = nclistnew();
 
     in_file = fopen(path, "r"); /* Open the file to read it */

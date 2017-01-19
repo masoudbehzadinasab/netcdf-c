@@ -59,7 +59,7 @@ struct KEYWORDINFO {
 {"UInt32", NCD4_VAR,NC_UINT,NULL},
 {"UInt64", NCD4_VAR,NC_UINT64,NULL},
 {"UInt8", NCD4_VAR,NC_UBYTE,NULL},
-{"URL", NCD4_VAR,NC_STRING,NULL},
+{"URL", NCD4_VAR,NC_STRING,"String"},
 };
 typedef struct KEYWORDINFO KEYWORDINFO;
 
@@ -81,7 +81,6 @@ static struct ATOMICTYPEINFO {
 {"UInt32",NC_UINT,sizeof(unsigned int)},
 {"UInt64",NC_UINT64,sizeof(unsigned long long)},
 {"UInt8",NC_UBYTE,sizeof(unsigned char)},
-{"URL",NC_STRING,sizeof(char*)},
 {NULL,NC_NAT,0}
 };
 
@@ -174,9 +173,9 @@ NCD4_parse(NCD4meta* metadata)
     ret = traverse(parser,dom);
 
 done:
-    if(ret != NC_NOERR) {
-        reclaimParser(parser);
-    }
+    if(dom != NULL)
+	ezxml_free(dom);
+    reclaimParser(parser);
     return THROW(ret);
 }
 
@@ -706,6 +705,7 @@ parseAttributes(NCD4parser* parser, NCD4node* container, ezxml_t xml)
 {
     int ret = NC_NOERR;
     ezxml_t x;
+    NClist* values = NULL;
 
     /* First, transfer any reserved xml attributes */
     {
@@ -729,7 +729,6 @@ parseAttributes(NCD4parser* parser, NCD4node* container, ezxml_t xml)
 	const char* type = ezxml_attr(x,"type");
 	NCD4node* attr = NULL;
 	NCD4node* basetype;
-	NClist* values = NULL;
 
 	if(name == NULL) FAIL(NC_EBADNAME,"Missing <Attribute> name");
 	if(type == NULL) FAIL(NC_EBADTYPE,"Missing <Attribute> type");
@@ -747,13 +746,15 @@ parseAttributes(NCD4parser* parser, NCD4node* container, ezxml_t xml)
 	attr->basetype = basetype;
 	values = nclistnew();
 	if((ret=getValueStrings(parser,basetype,x,values))) {
-	    nclistfreeall(values);
 	    FAIL(NC_EINVAL,"Malformed attribute: %s",name);
 	}
-	attr->attr.values = values;
+	attr->attr.values = values; values = NULL;
 	PUSH(container->attributes,attr);
     }
 done:
+    if(ret != NC_NOERR) {
+        nclistfreeall(values);
+    }
     return THROW(ret);
 }
 
@@ -1108,7 +1109,7 @@ lookupFQN(NCD4parser* parser, const char* sfqn, NCD4sort sort)
     if(NCD4_TYPE == sort) {
         match = lookupAtomictype(parser,(sfqn[0]=='/'?sfqn+1:sfqn));
         if(match != NULL)
-	    return match;
+	    goto done;
     }
     if((ret=NCD4_parseFQN(sfqn,fqnlist))) goto done;
     if((ret=lookupFQNList(parser,fqnlist,sort,&match))) goto done;
@@ -1251,6 +1252,7 @@ makeAnonDim(NCD4parser* parser, const char* sizestr)
 	if((ret=makeNode(parser,root,NULL,NCD4_DIM,NC_NULL,&dim))) goto done;
 	SETNAME(dim,name+1); /* leave out the '/' separator */
 	dim->dim.size = (long long)size;
+	dim->dim.isanonymous = 1;
 	PUSH(root->dims,dim);
     }
 done:

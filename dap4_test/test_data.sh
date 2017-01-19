@@ -11,10 +11,10 @@ cd $WD
 if test "x${RESET}" = x1 ; then rm -fr ${BASELINE}/*.dap.ncdump ; fi
 for f in $F ; do
     echo "testing: ${f}"
-    if ! ./t_dmrdata ${DAPTESTFILES}/${f} ./results/${f}.nc ; then
-        failure "./t_dmrdata ${DAPTESTFILES}/${f} ./results/${f}.nc"
+    if ! ${VG} ./test_data ${DAPTESTFILES}/${f} ./results/${f}.nc ; then
+        failure "./test_data ${DAPTESTFILES}/${f} ./results/${f}.nc"
     fi
-    ncdump ./results/${f}.nc > ./results/${f}.dap.ncdump
+    ../ncdump/ncdump ./results/${f}.nc > ./results/${f}.dap.ncdump
     if test "x${TEST}" = x1 ; then
 	echo diff -wBb ${BASELINE}/${f}.dap.ncdump ./results/${f}.dap.ncdump 
 	if ! diff -wBb ${BASELINE}/${f}.dap.ncdump ./results/${f}.dap.ncdump ; then
@@ -85,10 +85,5 @@ if test "x${CDLDIFF}" = x1 ; then
   done
 fi
 
-if test "x$FAILURES" = x1 ; then
-echo "*** Fail"
-exit 1
-else
-echo "*** Pass"
-exit 0
-fi
+finish
+

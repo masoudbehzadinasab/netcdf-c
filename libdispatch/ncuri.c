@@ -20,10 +20,9 @@
 #define NCURIDEBUG
 
 #ifdef NCURIDEBUG
-static int failpoint = 0;
-#define THROW(n) {failpoint=(n); goto fail;}
+#define THROW(n) {ret=(n); goto done;}
 #else
-#define THROW(n) {goto fail;}
+#define THROW(n) {goto done;}
 #endif
 
 #define PADDING 8
@@ -31,6 +30,7 @@ static int failpoint = 0;
 #define LBRACKET '['
 #define RBRACKET ']'
 #define EOFCHAR '\0'
+#define RBRACKETSTR "]"
 
 #define DRIVELETTERS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -49,6 +49,9 @@ static int failpoint = 0;
 #define terminate(p) {*(p) = EOFCHAR;}
 
 #define endof(p) ((p)+strlen(p))
+
+#define lshift(buf,buflen) {memmove(buf,buf+1,buflen+1);}
+#define rshift(buf,buflen) {memmove(buf+1,buf,buflen+1);}
 
 /* Allowable character sets for encode */
 static char* pathallow =
@@ -73,9 +76,12 @@ ncstrndup(const char* s, size_t len)
 }
 #endif
 /* Forward */
+static int collectprefixparams(char* text, char** nextp);
+static void freestringlist(NClist* list);
+static void freestringvec(char** list);
 static int ncfind(char** params, const char* key);
 static char* nclocate(char* p, const char* charlist);
-static int parselist(const char* text, char lparen, char rparen, NClist*, char** nextp);
+static int parselist(char* ptext, NClist* list);
 
 /**************************************************/
 /*
@@ -103,27 +109,41 @@ IMPORTANT: the client parameter string is assumed to have blanks compressed out.
 int
 ncuriparse(const char* uri0, NCURI** durip)
 {
-    NCURI* duri = NULL;
-    NClist* params = NULL;
+    int ret = NCU_OK;
+    NCURI tmp;
     char* p;
     char* q;
-    int i,c;
     int isfile;
-    int hasdrive, hashost;
-    char* uri;
+    int hashost;
+    char* uri = NULL;
+    NCURI* duri = NULL;
+    char* prefix = NULL;
+    char* next = NULL;
+    NClist* params = nclistnew();
+    NClist* querylist = nclistnew();
+    size_t len0;
+    int pathchar;
 
-    if(uri0 == NULL || strlen(uri0) == 0)
+    if(uri0 == NULL)
 	{THROW(NCU_EBADURL);}
 
-    duri = (NCURI*)calloc(1,sizeof(NCURI));
-    if(duri == NULL)
-      {THROW(NCU_ENOMEM);}
+    len0 = strlen(uri0);
+    if(len0 == 0)
+	{THROW(NCU_EBADURL);}
 
-    /* save original uri */
-    duri->uri = strdup(uri0);
+    /* Create a local NCURI instance to hold
+       pointers into the parsed string
+    */
+    memset(&tmp,0,sizeof(tmp));
 
-    /* make mutable copy */
-    uri = strdup(uri0);
+    /* make mutable copy. Add some extra space
+       because we will need to null terminate the host section
+       without losing the first character of the path section.
+    */
+    uri = (char*)malloc(len0+1+1); /* +2 for nul term and for host section terminator */
+    if(uri == NULL)
+	{THROW(NCU_ENOMEM);}
+    strncpy(uri,uri0,len0+1);
 
     /* Walk the uri and do the following:
 	1. remove leading and trailing whitespace
@@ -135,25 +155,75 @@ ncuriparse(const char* uri0, NCURI** durip)
 
     p = uri;
 
-    /* collect any prefix bracketed parameters */
+    /* break up the url into coarse pieces */
     if(*p == LBRACKET) {
-	char* next = NULL;
-	if(params == NULL) params = nclistnew();
-	if(!parselist(p,LBRACKET,RBRACKET,params,&next))
-  	    {THROW(NCU_EBADURL);}
-	p = next;
+        prefix = p;
+        ret = collectprefixparams(p,&next); /* collect the prefix */
+        if(ret != NCU_OK)
+            {THROW(NCU_EBADURL);}
+         p = next;
+    } else {
+	prefix = NULL;
     }
-    /* Tag the protocol */
-    duri->protocol = p;
+    tmp.uri = p; /* will be the core */
+    /* Skip past the core of the url */
+    next = nclocate(p,"?#");
+    if(next != NULL) {
+	int c = *next;
+	terminate(next);
+	next++;
+	if(c == '?') {
+	    tmp.query = next;
+	    next = nclocate(next,"#");
+	    if(next == NULL)
+		tmp.fragment = NULL;
+	    else {
+		terminate(next);
+		next++;
+	        tmp.fragment = next;
+	    }
+	} else { /*c == '#'*/
+	    tmp.fragment = next;
+	}	    
+    }
+
+    /* Parse the prefix parameters */
+    if(prefix != NULL) {
+        if(parselist(prefix,params) != NCU_OK)
+            {THROW(NCU_EBADURL);}
+    }
+    /* Parse the fragment parameters */
+    if(tmp.fragment != NULL) {
+        if(parselist(tmp.fragment,params) != NCU_OK)
+            {THROW(NCU_EBADURL);}
+    }
+    if(nclistlength(params) > 0) {
+	nclistpush(params,NULL);
+        tmp.fraglist = nclistextract(params);
+    } else
+	tmp.fraglist = NULL;
+    /* Parse the query */
+    if(tmp.query != NULL) {
+        if(parselist(tmp.query,querylist) != NCU_OK)
+            {THROW(NCU_EBADURL);}
+        if(nclistlength(querylist) > 0) {
+	    nclistpush(querylist,NULL);
+            tmp.querylist = nclistextract(querylist);
+	}
+    }    
+
+    /* Now parse the core of the url */
+    p = tmp.uri;
+
+    /* Mark the protocol */
+    tmp.protocol = p;
     p = strchr(p,':');
     if(!p)
 	{THROW(NCU_EBADURL);}
     terminate(p); /*overwrite colon*/
     p++; /* skip the colon */
-    if(strlen(duri->protocol)==0)
+    if(strlen(tmp.protocol)==0)
 	{THROW(NCU_EBADURL);}
-    duri->protocol = strdup(duri->protocol); /* save the protocol */
-
     /*
        The legal formats for file: urls are a problem since
        many variants are often accepted.
@@ -179,21 +249,17 @@ ncuriparse(const char* uri0, NCURI** durip)
        All other cases are disallowed: specifically including file://X.
     */
 
-    isfile = (strcmp(duri->protocol,"file")==0);
+    isfile = (strcmp(tmp.protocol,"file")==0);
     if(isfile) {
 	int l = strlen(p); /* to test if we have enough characters */
-	char savechar;
 	hashost = 0; /* always */
-	hasdrive = 0; /* assume */
 	if(l >= 2 && p[1] == ':' && strchr(DRIVELETTERS,p[0]) != NULL) { /* case 1 */
 	    p = p; /* p points to the start of the path */
-	    hasdrive = 1;
         } else if(l >= 2 && p[0] == '/' && p[1] != '/') { /* case 2 */
 	    p = p; /* p points to the start of the path */
 	} else if(l >= 4 && p[0] == '/' && p[1] == '/'
 		&& p[3] == ':' && strchr(DRIVELETTERS,p[2]) != NULL) { /* case 3 */
 	    p = p+2; /* points to the start of the windows path */
-	    hasdrive = 1;
         } else if(l >= 4 && p[0] == '/' && p[1] == '/' && p[2] == '/' && p[3] != '/') { /* case 4 */
 	    p += 2; /* points to the start of the path */
         } else /* everything else is illegal */
@@ -204,131 +270,97 @@ ncuriparse(const char* uri0, NCURI** durip)
 	p += 2;
         hashost = 1; /* Assume we have a hostname */
     }
-    if(!hashost)    
-        duri->path = p;
-    else { /* assume there should be a host section */
-	char* q;
-        /* locate the end of the host section and therefore the start
-           of the path|query|fragment  */
-	duri->host = p;
-        p  = nclocate(p,"/?#");
-	if(p == NULL) { /* rest of uri is empty */
-	    duri->host = strdup(duri->host); /* rest of uri is all host */
-	    duri->path = strdup("/"); /* default */
+    if(!hashost) {
+        tmp.path = p;
+	pathchar = EOFCHAR;
+    } else { /* assume there should be a host section */
+	/* We already extracted the query and/or fragment sections above,
+           splocate the end of the host section and therefore the start
+           of the path.
+        */
+	tmp.host = p;
+        p  = nclocate(p,"/");
+	if(p == NULL) { /* no path */
+	    tmp.path = NULL; /* default */
+	    pathchar = EOFCHAR;
 	} else {
-	    /* Temporarily overwrite the char past the host+port */
-	    int c = *p;
-	    terminate(p);
-	    duri->host = strdup(duri->host);	    
-	    *p = c; /* restore the character */
-	    duri->path = p;
+	    tmp.path = p; /* save ptr to rest of the path */
+	    pathchar = *p; /* save leading char of the path */
+	    terminate(p); /* overwrite the leading char of the path; restored below */
 	}
     }
-    /* Nullify duri->host for consistency */
-    if(duri->host != NULL && strlen(duri->host)==0) {nullfree(duri->host); duri->host = NULL;}
+    /* Nullify tmp.host for consistency */
+    if(tmp.host != NULL && strlen(tmp.host)==0) {tmp.host = NULL;}
 
-    if(duri->host != NULL) {/* Parse the host section */
+    if(tmp.host != NULL) {/* Parse the host section */
         char* pp;
 	/* Check for leading user:pwd@ */
-        char* newhost = strchr(duri->host,'@');
+        char* newhost = strchr(tmp.host,'@');
         if(newhost != NULL) {
 	    size_t rem;
-	    if(newhost == duri->host)
+	    if(newhost == tmp.host)
 		{THROW(NCU_EUSRPWD);} /* we have proto://@ */
 	    terminate(newhost); /* overwrite '@' */
 	    newhost++; /* should point past usr+pwd */
-	    duri->user = duri->host;
+	    tmp.user = tmp.host;
 	    /* Break user+pwd into two pieces */
-	    pp = strchr(duri->user,':');
+	    pp = strchr(tmp.user,':');
 	    if(pp == NULL)
 		{THROW(NCU_EUSRPWD);} /* we have user only */
 	    terminate(pp); /* overwrite ':' */
 	    pp++;
-	    if(strlen(duri->user)==0)
+	    if(strlen(tmp.user)==0)
 		{THROW(NCU_EUSRPWD);} /* we have empty user */
 	    if(strlen(pp)==0)
 		{THROW(NCU_EUSRPWD);} /* we have empty password */
-	    duri->user = strdup(duri->user);
-	    duri->password = strdup(pp);	    
-	    /* compress usr+pwd out of duri->host */
+	    tmp.password = pp;	    
+	    /* compress usr+pwd out of tmp.host */
 	    rem = strlen(newhost);
-	    memmove(duri->host,newhost,rem);
-	    duri->host[rem] = EOFCHAR;
+	    memmove(tmp.host,newhost,rem);
+	    tmp.host[rem] = EOFCHAR;
 	}
 	/* Breakup host into host + port */
-	pp = duri->host;
+	pp = tmp.host;
         pp = strchr(pp,':');
         if(pp != NULL) { /* there is a port */
 	    terminate(pp); /* overwrite ':' */
 	    pp++; /* skip colon */
-	    if(strlen(duri->host) == 0)
+	    if(strlen(tmp.host) == 0)
 		{THROW(NCU_EBADURL);} /* empty host */
 	    if(strlen(pp)==0)
 		{THROW(NCU_EBADURL);} /* empty port */
-	    duri->port = strdup(pp);
+	    tmp.port = pp;
 	    /* The port must look something like a number */
-	    for(pp=duri->port;*pp;pp++) {
+	    for(pp=tmp.port;*pp;pp++) {
 	        if(strchr("0123456789-",*pp) == NULL)
 		    {THROW(NCU_EPORT);}  /* probably not a real port, fail */
 	    }
 	} /* else no port */
     }
 
-    /* find the end of the file section and the start of the
-       constraints and/or suffixparams
-    */
-    p = duri->path;
-    p = nclocate(p,"?#");
-    if(p == NULL) {
-	p = duri->path;
-	p = endof(p);
+    /* Fill in duri from tmp */
+    duri = (NCURI*)calloc(1,sizeof(NCURI));
+    if(duri == NULL)
+      {THROW(NCU_ENOMEM);}
+    /* save original uri */
+    duri->uri = strdup(uri0);
+    duri->protocol = nulldup(tmp.protocol);
+    duri->user = nulldup(tmp.user);
+    duri->password = nulldup(tmp.password);
+    duri->host = nulldup(tmp.host);
+    duri->port = nulldup(tmp.port);
+    if(tmp.path != NULL) {
+	/* We need to add back the previously overwritten path lead char (if necessary);
+           this must be done after all host section related pieces have been captured */
+	if(pathchar != EOFCHAR)
+	    *tmp.path = pathchar;
+        duri->path = nulldup(tmp.path);
     }
-    c = *p;
-    *p = EOFCHAR;
-    if(c == '?') {
-	char* q;
-	p++;
-	duri->query = p; /* temp */
-        q = nclocate(p,"#");
-	if(q == NULL) q = p + strlen(p); /* make point to end of the query */
-	p = q;
-	c = *p;
-    }
-    if(c == '#') {
-	*p = EOFCHAR;
-	p++;
-	duri->fragment = p; /* temp */
-    }
-    if(duri->path != NULL) {
-        duri->path = (strlen(duri->path) > 0 ? strdup(duri->path) : NULL);
-    }
-    if(duri->query != NULL)
-	duri->query = (strlen(duri->query) > 0 ? strdup(duri->query) : NULL);
-    if(duri->fragment != NULL)
-        duri->fragment = (strlen(duri->fragment) > 0 ? strdup(duri->fragment) : NULL);
-
-    /* Parse the query if exists */
-    if(duri->query != NULL) {
-	NClist* qp = nclistnew();
-	if(parselist(duri->query,EOFCHAR,'&',qp,NULL)) {
-	    nclistpush(qp,NULL);
-	    duri->querylist = nclistextract(qp);
-	} else
-	    {THROW(NC_ENOMEM);}
-	nclistfree(qp);
-    }
-    /* Parse the fragment if exists */
-    if(duri->fragment != NULL) {
-	if(params == NULL) params = nclistnew();
-	if(!parselist(duri->fragment,EOFCHAR,'&',params,NULL))
-	    {THROW(NC_ENOMEM);}
-    }
-    if(params != NULL && nclistlength(params) > 0) {
-	nclistpush(params,NULL);
-        duri->fraglist = nclistextract(params);
-    }
-
-    nclistfree(params);
+    duri->query = nulldup(tmp.query);
+    duri->fragment = nulldup(tmp.fragment);
+    duri->fraglist = tmp.fraglist; tmp.fraglist = NULL;
+    duri->querylist = tmp.querylist; tmp.querylist = NULL;
+    if(durip) *durip = duri;
 
 #ifdef NCXDEBUG
 	{
@@ -344,21 +376,32 @@ ncuriparse(const char* uri0, NCURI** durip)
         fprintf(stderr,"\n");
     }
 #endif
-    if(durip != NULL)
-      *durip = duri;
-    else
-      ncurifree(duri);
-    return NCU_OK;
 
-fail:
-    if(duri != NULL) {
-	ncurifree(duri);
-    }
-    return NCU_EBADURL;
+done:
+    if(uri != NULL)
+	free(uri);
+    freestringlist(params);
+    freestringlist(querylist);
+    freestringvec(tmp.fraglist);
+    freestringvec(tmp.querylist);
+    return ret;
 }
 
 static void
-clearlist(char** list)
+freestringlist(NClist* list)
+{
+    if(list != NULL) {
+	int i;
+	for(i=0;i<nclistlength(list);i++) {
+	    void* p = nclistget(list,i);
+	    nullfree(p);
+	}
+        nclistfree(list);
+    }
+}
+
+static void
+freestringvec(char** list)
 {
     if(list != NULL) {
 	char** p;	
@@ -370,7 +413,6 @@ clearlist(char** list)
 void
 ncurifree(NCURI* duri)
 {
-    char** p;
     if(duri == NULL) return;
     nullfree(duri->uri);
     nullfree(duri->protocol);
@@ -381,8 +423,8 @@ ncurifree(NCURI* duri)
     nullfree(duri->path);
     nullfree(duri->query);
     nullfree(duri->fragment);
-    clearlist(duri->querylist);
-    clearlist(duri->fraglist);
+    freestringvec(duri->querylist);
+    freestringvec(duri->fraglist);
     free(duri);
 }
 
@@ -399,22 +441,23 @@ ncurisetprotocol(NCURI* duri,const char* protocol)
 int
 ncurisetquery(NCURI* duri,const char* query)
 {
-    failpoint = NCU_OK;
-    clearlist(duri->querylist);    
+    int ret = NCU_OK;
+    freestringvec(duri->querylist);    
     nullfree(duri->query);
     duri->query = NULL;
     duri->querylist = NULL;
     if(query != NULL && strlen(query) > 0) {
 	NClist* params = nclistnew();
 	duri->query = strdup(query);
-	if(!parselist(duri->query,EOFCHAR,'&',params,NULL))
+	ret = parselist(duri->query,params);
+	if(ret != NCU_OK)
 	    {THROW(NC_EURL);}
 	nclistpush(params,NULL);
 	duri->querylist = nclistextract(params);
 	nclistfree(params);
     }
-fail:
-    return failpoint;
+done:
+    return ret;
 }
 
 #if 0
@@ -472,7 +515,6 @@ ncurisetconstraints(NCURI* duri,const char* constraints)
 char*
 ncuribuild(NCURI* duri, const char* prefix, const char* suffix, int flags)
 {
-    size_t len = 0;
     char* newuri = NULL;
     NCbytes* buf = ncbytesnew();
 #ifdef NEWESCAPE
@@ -841,64 +883,88 @@ ncuridecodeonly(char* s, char* only)
 }
 
 static int
-parselist(const char* text0, char lsep, char rsep, NClist* list, char** nextp)
+collectprefixparams(char* text, char** nextp)
 {
-    char lparen[2];
-    char rparen[2];
-    int singlesep = 0; /* keep single separator in rparen */
+    int ret = NCU_OK;
+    char* sp;
+    char* ep;
+    char* last;
 
-    if(lsep == EOFCHAR && rparen == EOFCHAR) {rsep = '&';}
-    if(lsep != EOFCHAR && rparen == EOFCHAR) {rsep = lsep; lsep = EOFCHAR;}
-    lparen[0] = lsep; lparen[1] = EOFCHAR;
-    rparen[0] = rsep; rparen[1] = EOFCHAR;
-
-    singlesep = (lsep == EOFCHAR && rsep != EOFCHAR ? 1 : 0);
-
-    if(strlen(text0) > 0) {
-	char* text = strdup(text0);
-	char* sp = text; /* start of parameter */
-	int more;
-
-	if(!singlesep && *text0 != lsep)
-	    return 0;
-
-	text = strdup(text0);
-	sp = text; /* start of parameter */
-	more = (*sp != EOFCHAR);
-	while(more) {
-	    char *key, *value, *eq, *ep;
-
-	    if(!singlesep && *sp != lsep)
-		return 0; /* malformed */
-	    if(!singlesep && *sp == lsep)
-		sp++; /* skip lparen */
-            /* use nclocate because \\ escapes might be present */
-	    ep = nclocate(sp,rparen);
-	    if(singlesep) {
-	        if(ep == NULL) {/* NULL => we are at last parameter */
-	            ep = endof(sp);
-		    more = 0;
-		}
-	    } else {
-		if(ep == NULL)
-		    return 0; /* missing the terminating right paren */
-		more = (ep[1] == lsep ? 1 : 0);
-	    }
-	    terminate(ep); /* overwrite rsep (ok if ep was null) */
-            eq = strchr(sp,'=');
-	    if(eq != NULL && eq < ep) { /* value is present */	    
-	        terminate(eq); eq++;
-	        key = strdup(sp);
-	        value = strdup(eq);
-	    } else {/* there is no value */
-		key = strdup(sp);
-		value = strdup("");
-	    }
-	    nclistpush(list,key);
-	    nclistpush(list,value);
-	    sp = ep+1;
-	}
-        if(nextp) *nextp = sp;
+    if(text == NULL) return NCU_EBADURL;
+    if(strlen(text) == 0) {
+	if(nextp) *nextp = text;
+	return NCU_OK;
     }
-    return 1;
+    /* pass 1: locate last rbracket and nul term the prefix */
+    sp = text;
+    last = NULL;
+    for(;;) {
+	if(*sp != LBRACKET) {
+	    if(nextp) *nextp = sp;
+	    break;
+	}
+        /* use nclocate because \\ escapes might be present */
+        ep = nclocate(sp,RBRACKETSTR);
+	if(ep == NULL) {ret = NCU_EPARAMS; goto done;} /* malformed */
+	last = ep; /* save this position  */
+	ep++; /* move past rbracket */
+	sp = ep;
+    }	
+    /* nul terminate */
+    if(last != NULL)
+	terminate(last);
+
+    /* pass 2: convert [] to & */
+    sp = text;
+    for(;;) {
+	char* p; char* q;
+	/* by construction, here we are at an LBRACKET: compress it out */
+	for(p=sp,q=sp+1;(*p++=*q++););	
+        /* locate the next RRACKET */
+        ep = nclocate(sp,RBRACKETSTR);
+	if(ep == NULL) break;/* we are done */
+	/* convert the BRACKET to '&' */
+	*ep = '&';
+	ep++; /* move past rbracket */
+	sp = ep;
+    }	
+done:
+    return ret;    
+}
+
+static int
+parselist(char* ptext, NClist* list)
+{
+    int ret = NCU_OK;
+    char* p;
+    p = ptext; /* start of next parameter */
+    for(;;) {
+	char* sp = p;
+	char* eq;
+	char* ep;
+	char* key;
+	char* value;
+	if(*p == EOFCHAR) break; /* we are done */
+        /* use nclocate because \\ escapes might be present */
+	ep = nclocate(sp,"&");
+	if(ep != NULL) {
+	    terminate(ep); /* overwrite the trailing ampersand */
+	    p = ep+1; /* next param */
+	}	
+	/* split into key + value */
+        eq = strchr(sp,'=');
+        if(eq != NULL) { /* value is present */	    
+	    terminate(eq); eq++;
+	    key = strdup(sp);
+	    value = strdup(eq);
+	} else {/* there is no value */
+	    key = strdup(sp);
+	    value = strdup("");
+	}
+        nclistpush(list,key);
+	nclistpush(list,value);
+	if(ep == NULL)
+	    break;
+    }
+    return ret;
 }
