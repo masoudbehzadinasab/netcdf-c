@@ -1,6 +1,6 @@
-SET(dap2_SOURCES constraints.c dapcvt.c dapalign.c dapodom.c daputil.c ncdaperr.c cdf.c cache.c dapdump.c dapdebug.c dapattr.c ncd2dispatch.c getvara.c dceconstraints.c dcetab.c dceparse.c dcelex.c)
+SET(dap4_SOURCES d4crc32.c d4curlfunctions.c d4curlflags.c d4rc.c d4fix.c d4data.c d4file.c d4parser.c d4meta.c d4varx.c d4dump.c d4swap.c d4chunk.c d4printer.c d4read.c d4http.c d4util.c d4odom.c d4cvt.c d4debug.c ncd4dispatch.c ezxml_extra.c ezxml.c)
 
-add_library(dap2 OBJECT ${dap2_SOURCES})
+add_library(dap4 OBJECT ${dap4_SOURCES})
 
 ###
 # Options related to the man page generation.
@@ -29,3 +29,4 @@ ENDIF(BUILD_PARALLEL)
 FILE(GLOB CUR_EXTRA_DIST RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 SET(CUR_EXTRA_DIST ${CUR_EXTRA_DIST} dce.y CMakeLists.txt Makefile.am)
 ADD_EXTRA_DIST("${CUR_EXTRA_DIST}")
+
