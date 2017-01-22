@@ -7,8 +7,7 @@ Test part variable fetch code
 #include <string.h>
 #include "netcdf.h"
 #include "ncdispatch.h"
-
-extern char* nc_findtestserver(const char* path, int isdap4, const char*);
+#include "nctestserver.h"
 
 /* The DDS in netcdf classic form is as follows: 
 netcdf ingrid {

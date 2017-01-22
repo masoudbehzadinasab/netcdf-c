@@ -600,6 +600,7 @@ computesize(Symbol* tsym)
 {
     int i;
     int offset = 0;
+    int largealign;
     unsigned long totaldimsize;
     if(tsym->touched) return;
     tsym->touched=1;
@@ -627,31 +628,27 @@ computesize(Symbol* tsym)
 	    break;
 	case NC_COMPOUND: /* keep if all fields are primitive*/
 	    /* First, compute recursively, the size and alignment of fields*/
-	    for(i=0;i<listlength(tsym->subnodes);i++) {
-		Symbol* field = (Symbol*)listget(tsym->subnodes,i);
-		ASSERT(field->subclass == NC_FIELD);
-		computesize(field);
-/* This is apparently incorrect, alignment is to largealing (see below)
-		// alignment of struct is same as alignment of first field
-		if(i==0) tsym->typ.alignment = field->typ.alignment;
-*/
-	    }
-	    /* now compute the size of the compound based on*/
-	    /* what user specified*/
-	    offset = 0;
-            int largealign = 1;
             for(i=0;i<listlength(tsym->subnodes);i++) {
-              Symbol* field = (Symbol*)listget(tsym->subnodes,i);
-              /* only support 'c' alignment for now*/
-              int alignment = field->typ.alignment;
-	      int padding = getpadding(offset,alignment);
-              offset += padding;
-              field->typ.offset = offset;
-              offset += field->typ.size;
-              if (alignment > largealign) {
-                largealign = alignment;
-              }
-	    }
+		Symbol* field = (Symbol*)listget(tsym->subnodes,i);
+                ASSERT(field->subclass == NC_FIELD);
+		computesize(field);
+		if(i==0) tsym->typ.alignment = field->typ.alignment;
+            }
+            /* now compute the size of the compound based on what user specified*/
+            offset = 0;
+            largealign = 1;
+            for(i=0;i<listlength(tsym->subnodes);i++) {
+                Symbol* field = (Symbol*)listget(tsym->subnodes,i);
+                /* only support 'c' alignment for now*/
+                int alignment = field->typ.alignment;
+                int padding = getpadding(offset,alignment);
+                offset += padding;
+                field->typ.offset = offset;
+                offset += field->typ.size;
+                if (alignment > largealign) {
+                    largealign = alignment;
+                }
+            }
 	    tsym->typ.cmpdalign = largealign; /* total structure size alignment */
             offset += (offset % largealign);
 	    tsym->typ.size = offset;

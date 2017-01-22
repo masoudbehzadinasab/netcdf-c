@@ -8,7 +8,7 @@ echo "*** Testing extended file format output."
 set -e
 
 # Figure our dst server
-DTS=`../liblib/findtestserver dap2 dts`
+DTS=`./findtestserver dap2 dts`
 if test "x$DTS" = "x" ; then
 echo "cannot locate test server for dts"
 exit

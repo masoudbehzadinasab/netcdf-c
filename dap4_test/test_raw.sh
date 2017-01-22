@@ -6,7 +6,7 @@ export srcdir;
 . ${srcdir}/test_common.sh
 
 # Compute the set of testfiles
-PUSHD daptestfiles
+PUSHD ${srcdir}/daptestfiles
 F=`ls -1d *.dap`
 POPD
 F=`echo $F | tr '\r\n' '  '`

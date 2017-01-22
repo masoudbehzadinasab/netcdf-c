@@ -22,7 +22,34 @@
 # there are any .cdl files corresponding (by name)
 # to the files in daptestfiles.
 
+if test $# != 0 ; then
+for arg in "$@"; do
+  case "${arg}" in
+  debug) DEBUG=1 ;;
+  git) GITADD=1 ;;
+  *) echo unknown argument $arg ;;
+  esac
+done
+fi
+
 SRC="d:/git/thredds/dap4/d4tests/src/test/data/resources"
+
+# Compare files instead of recreating
+if test "x$DEBUG" = x1 ; then
+  pushd ./daptestfiles
+  F=`ls -1 *.dap | sed -e 's/[.]dap//' |tr '\r\n' '  '`
+  popd
+  for f in ${F} ; do
+    if ! diff -wBb ${SRC}/dmrtestfiles/${f}.dmr ./dmrtestfiles/${f}.dmr >& /dev/null ; then
+      echo diff -wBb ${SRC}/dmrtestfiles/${f}.dmr ./dmrtestfiles/${f}.dmr
+      diff -wBb ${SRC}/dmrtestfiles/${f}.dmr ./dmrtestfiles/${f}.dmr
+    fi
+  done
+  for f in ${F} ; do
+    diff -wBb ${SRC}/daptestfiles/${f}.dapr ./dmrtestfiles/${f}.dap
+  done
+  exit
+fi
 
 # Recreate the <testfiles> directories
 rm -fr ./daptestfiles ./cdltestfiles ./dmrtestfiles
@@ -39,8 +66,9 @@ pushd ./daptestfiles
 F=`ls -1 *.nc.dap | sed -e 's/[.]nc[.]dap//' |tr '\r\n' '  '`
 popd
 
+
 # For each .dap file, see if a corresponding .cdl file
-#exists in ${SRC}/testfiles; if so, copy it over.
+# exists in ${SRC}/testfiles; if so, copy it over.
 for f in ${F} ; do
 if test -f ${SRC}/testfiles/${f}.cdl ; then
   cp ${SRC}/testfiles/${f}.cdl ./cdltestfiles
@@ -53,7 +81,7 @@ done
 pushd ./cdltestfiles
 F=`ls -1 *.cdl | sed -e 's/[.]cdl//' |tr '\r\n' '  '`
 popd
-if ! test -f nctestfiles ; mkdir nctestfiles; fi
+if ! test -f nctestfiles ; then mkdir nctestfiles; fi
 for f in $F ; do
     ../ncgen/ncgen -4 -o nctestfiles/${f}.nc cdltestfiles/${f}.cdl 
 done
@@ -66,7 +94,7 @@ pushd nctestfiles ; chmod a-x * ; popd
 
 # If invoked with the argument "git", this
 # program will add the files to the git repo.
-if test "x$1" = xgit ; then
+if test "x${GITADD}" = x1 ; then
 git add daptestfiles/*.dap
 git add daptestfiles/*.dmr
 git add cdltestfiles/*.cdl

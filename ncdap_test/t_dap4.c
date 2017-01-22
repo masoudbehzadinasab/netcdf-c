@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "netcdf.h"
-
+#include "t_srcdir.h"
 
 #undef GENERATE
 
@@ -105,36 +105,12 @@ static long  ilong[DIMSIZE];
 static char string3[DIMSIZE][STRLEN];
 #endif
 
-/* Figure out topsrcdir; assume we are running in ncdap_test */
-static char*
-gettopsrcdir(void)
-{
-    char *p,*q, tmp[4096];
-    char* topsrcdir = getenv("TOPSRCDIR");
-    if(topsrcdir != NULL) {
-	strcpy(tmp,topsrcdir);
-    } else {
-	fprintf(stderr,"$abs_top_srcdir not defined: using 'getcwd'");
-        getcwd(tmp,sizeof(tmp));
-    }
-    /* Remove trailing filename */
-    for(p=tmp,q=NULL;*p;p++) {
-	if(*p == '\\') *p  = '/';
-	if(*p == '/') q = p;		
-    }
-    if(q == NULL)
-       q = tmp; /* should not ever happen, but oh well*/
-    else
-       *q = '\0';    
-    return strdup(tmp);
-}    
-
 int main()
 {
     int ncid, varid;
     int ncstat = NC_NOERR;
-    char url[4096];
-    char* topsrcdir;
+    char* url;
+    const char* topsrcdir;
     size_t len;
 #ifndef USE_NETCDF4
     int i,j;
@@ -144,16 +120,22 @@ int main()
 	server downtime issues
      */
     
-    /* Assume that TESTS_ENVIRONMENT was set */
     topsrcdir = gettopsrcdir();
-    strcat(url,"");
+
+    len = strlen("file://") + strlen(topsrcdir) + strlen("/ncdap_test/testdata3/test.02") + 1;
+#ifdef DEBUG
+    len += strlen("[log][show=fetch]");
+#endif
+    url = (char*)malloc(len);
+    url[0] = '\0';
+
 #ifdef DEBUG
     strcat(url,"[log][show=fetch]");
 #endif
+
     strcat(url,"file://");
     strcat(url,topsrcdir);
     strcat(url,"/ncdap_test/testdata3/test.02");
-    strcat(url,"#dap2");
 
     printf("*** Test: var conversions on URL: %s\n",url);
 

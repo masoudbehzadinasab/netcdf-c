@@ -2,8 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern char* nc_findtestserver(const char* path, int isdap4, const char* serverlist);
+#include "nctestserver.h"
 
 /**
 usage: findtestserver dap2|dap4 suffix [serverlist]

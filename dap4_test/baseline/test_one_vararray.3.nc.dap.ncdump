@@ -5,7 +5,7 @@ variables:
 	int t(d2) ;
 
 // global attributes:
-		string :_dap4.ce = "/t[1]" ;
+		string :_dap4.ce = "/t[0:1]" ;
 		:_DAP4_Little_Endian = 1UB ;
 data:
 

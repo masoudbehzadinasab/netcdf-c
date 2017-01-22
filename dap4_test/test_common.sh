@@ -1,3 +1,4 @@
+topsrcdir=`test_environment topsrcdir`
 if test "x$srcdir" = "x" ; then srcdir=`dirname $0`; fi; export srcdir
 
 if test $# = 0 ; then

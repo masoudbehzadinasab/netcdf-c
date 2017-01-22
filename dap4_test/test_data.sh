@@ -16,7 +16,6 @@ for f in $F ; do
     fi
     ../ncdump/ncdump ./results/${f}.nc > ./results/${f}.dap.ncdump
     if test "x${TEST}" = x1 ; then
-	echo diff -wBb ${BASELINE}/${f}.dap.ncdump ./results/${f}.dap.ncdump 
 	if ! diff -wBb ${BASELINE}/${f}.dap.ncdump ./results/${f}.dap.ncdump ; then
 	    failure "diff -wBb ${BASELINE}/${f}.dap.ncdump ./results/${f}.dap.ncdump"
 	fi

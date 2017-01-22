@@ -117,7 +117,7 @@ FLAGS="$FLAGS --disable-examples"
 #FLAGS="$FLAGS --disable-dap-remote-tests"
 FLAGS="$FLAGS --enable-dap4-remote-tests"
 #FLAGS="$FLAGS --with-testservers=remotetest.unidata.ucar.edu,localhost:8081"
-FLAGS="$FLAGS --enable-dap-auth-tests"
+#FLAGS="$FLAGS --enable-dap-auth-tests" -- requires a new remotetest server
 #FLAGS="$FLAGS --enable-doxygen"
 FLAGS="$FLAGS --enable-logging"
 #FLAGS="$FLAGS --disable-diskless"

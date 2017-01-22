@@ -9,8 +9,7 @@
 #define DEBUG
 
 #include "netcdf.h"
-
-extern char* nc_findtestserver(const char* path, int isdap4, const char*);
+#include "nctestserver.h"
 
 #undef NOEMBED
 #undef NOLOCAL

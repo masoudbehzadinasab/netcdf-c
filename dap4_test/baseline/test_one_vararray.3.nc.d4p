@@ -13,7 +13,7 @@
     </Int32>
   </Variables>
   <Attribute name="_dap4.ce" type="String">
-    <Value value="/t[1]"/>
+    <Value value="/t[0:1]"/>
   </Attribute>
   <Attribute name="_DAP4_Little_Endian" type="UInt8">
     <Value value="1"/>

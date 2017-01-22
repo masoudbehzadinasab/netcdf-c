@@ -315,6 +315,7 @@ if test "x$RCPREC" = x1 ; then
   # Invoke ncdump to extract a file using the URL
   echo "command: ${NCDUMP} -h $URL > $OUTPUT"
   ${NCDUMP} -h "$URL" > $OUTPUT
+  ${NCDUMP} -h "$URL"
   show
 fi
 

@@ -1,11 +1,8 @@
-#include "config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
 #include "netcdf.h"
+#include "t_srcdir.h"
 
 /* The DDS in netcdf classic form is as follows: 
 netcdf test {
@@ -72,32 +69,6 @@ static int floateq(float f1, float f2)
     return 0;
 }
 
-/* Figure out topsrcdir; assume we are running in ncdap_test */
-static char*
-gettopsrcdir(void)
-{
-    char *p,*q, tmp[4096];
-    char* topsrcdir = getenv("TOPSRCDIR");
-    if(topsrcdir != NULL) {
-	strcpy(tmp,topsrcdir);
-    } else {
-#ifdef DEBUG
-	fprintf(stderr,"$abs_top_srcdir not defined: using 'getcwd'");
-#endif
-        getcwd(tmp,sizeof(tmp));
-    }
-    /* Remove trailing filename */
-    for(p=tmp,q=NULL;*p;p++) {
-	if(*p == '\\') *p  = '/';
-	if(*p == '/') q = p;		
-    }
-    if(q == NULL)
-       q = tmp; /* should not ever happen, but oh well*/
-    else
-       *q = '\0';    
-    return strdup(tmp);
-}    
-
 int
 main()
 {
@@ -105,16 +76,14 @@ main()
     int retval;
     size_t start[RANK];
     size_t count[RANK];
-    char* topsrcdir;
+    const char* topsrcdir;
     char url[4096];
 
-    /* Assume that TESTS_ENVIRONMENT was set */
     topsrcdir = gettopsrcdir();
-    strcpy(url,"");
-    strcat(url,"file://");
+
+    strcpy(url,"file://");
     strcat(url,topsrcdir);
     strcat(url,"/ncdap_test/testdata3/test.06");
-    strcat(url,"#dap2");
 
     printf("test_vara: url=%s\n",url);
 

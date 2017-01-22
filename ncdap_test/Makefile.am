@@ -3,17 +3,18 @@
 
 # This file builds and runs DAP tests.
 
+# This will not work until we get a new remotetest server set up 
+
 # Put together AM_CPPFLAGS and AM_LDFLAGS.
 include $(top_srcdir)/lib_flags.am
 
 LDADD = ${top_builddir}/liblib/libnetcdf.la
 AM_CPPFLAGS += -DTOPSRCDIR=${abs_top_srcdir}
-AM_CPPFLAGS += -I$(top_builddir)/liblib
+AM_CPPFLAGS += -I$(top_srcdir)/liblib
 
 # Set up the tests; do the .sh first, then .c
 check_PROGRAMS =
 TESTS =
-TESTS_ENVIRONMENT=TOPSRCDIR=${abs_top_srcdir}
 
 TESTS += tst_ncdap3.sh
 
@@ -25,10 +26,15 @@ check_PROGRAMS += t_dap3a test_cvt3 test_vara
 
 TESTS += t_dap3a test_cvt3 test_vara
 
+check_PROGRAMS += test_environment
+test_environment_SOURCES = test_environment.c
+
 # remote tests are optional
 # because the server may be down or inaccessible
 
 if ENABLE_DAP_REMOTE_TESTS
+check_PROGRAMS += findtestserver
+findtestserver_SOURCES = findtestserver.c nctestserver.h
 
 if BUILD_UTILITIES
 TESTS += tst_remote3.sh tst_formatx.sh
@@ -40,11 +46,11 @@ if ENABLE_DAP_LONG_TESTS
  TESTS += tst_longremote3.sh
 endif
 
-test_partvar_SOURCES = test_partvar.c nctestserver.c
-test_varm3_SOURCES = test_varm3.c nctestserver.c
-test_nstride_cached_SOURCES = test_nstride_cached.c nctestserver.c
+test_partvar_SOURCES = test_partvar.c
+test_varm3_SOURCES = test_varm3.c
+test_nstride_cached_SOURCES = test_nstride_cached.c
 
-#t_auth_SOURCES = t_auth.c nctestserver.c
+#t_auth_SOURCES = t_auth.c
 t_misc_SOURCES = t_misc.c
 
 TESTS += test_varm3
@@ -120,10 +126,10 @@ BUILT_SOURCES = .dodsrc
 .dodsrc:
 	echo "#DODSRC" >.dodsrc
 
-DISTCLEANFILES = .dodsrc results/* results
+clean-local: clean-local-check
 
-# Build the findtestserver program, but do not install
-bin_PROGRAMS =
-bin_PROGRAMS += findtestserver 
-findtestserver_SOURCES = findtestserver.c nctestserver.c
+.PHONY: clean-local-check
 
+clean-local-check:
+	-rm -rf results
+	-rm .dodsrc

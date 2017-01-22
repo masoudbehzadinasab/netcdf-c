@@ -21,8 +21,7 @@ netcdf-4.1-beta2-snapshot2009091100
 #include <string.h>
 #include "netcdf.h"
 #include "ncdispatch.h"
-
-extern char* nc_findtestserver(const char* path, int isdap4, const char*);
+#include "nctestserver.h"
 
 #undef STANDALONE
 

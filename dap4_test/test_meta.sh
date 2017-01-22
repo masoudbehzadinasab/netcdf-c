@@ -25,10 +25,8 @@ for f in ${F} ; do
     if ! ${VG} ./test_meta ${DMRTESTFILES}/${f}.dmr ./results/${f} ; then
         failure "./test_meta ${DMRTESTFILES}/${f}.dmr ./results/${f}"
     fi
-    echo ncdump -h ./results/${f}
     ../ncdump/ncdump -h ./results/${f} > ./results/${f}.dmr.ncdump
     if test "x${TEST}" = x1 ; then
-	echo diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump
 	if ! diff -wBb ${BASELINE}/${f}.dmr.ncdump ./results/${f}.dmr.ncdump ; then
 	    failure "diff -wBb ${BASELINE}/${f}.ncdump ./results/${f}.dmr.ncdump"
 	fi

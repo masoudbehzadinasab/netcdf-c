@@ -9,8 +9,6 @@ FILE(COPY ${COPY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/ FILE_PERMISSION
 
 IF(ENABLE_TESTS)
 
-  BUILD_BIN_TEST_NO_PREFIX(findtestserver)
-
   # Base tests
   # The tests are set up as a combination of shell scripts and executables that
   # must be run in a particular order. It is painful but will use macros to help
@@ -26,7 +24,12 @@ IF(ENABLE_TESTS)
   add_sh_test(dap4_test t_dmrdata.sh)
   add_sh_test(dap4_test test_raw.sh)
 
+  BUILD_BIN_TEST_NO_PREFIX(test_environment)
+
   IF(ENABLE_DAP4_REMOTE_TESTS)
+
+    BUILD_BIN_TEST_NO_PREFIX(findtestserver)
+
     IF(BUILD_UTILITIES)
       add_sh_test(dap4_test test_remote.sh)
     ENDIF(BUILD_UTILTIES)

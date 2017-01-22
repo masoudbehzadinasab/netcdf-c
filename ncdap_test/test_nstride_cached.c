@@ -53,8 +53,7 @@ incorrect data return
 #include<string.h>
 #include "netcdf.h"
 #include "ncdispatch.h"
-
-extern char* nc_findtestserver(const char* path, int isdap4, const char*);
+#include "nctestserver.h"
 
 #define VERBOSE 1
 
