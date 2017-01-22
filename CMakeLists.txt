@@ -1286,9 +1286,8 @@ MACRO(add_bin_env_test prefix F)
 ENDMACRO()
 
 # Build a binary used by a script, but don't make a test out of it.
-MACRO(build_bin_test F OTHER)
-  SET(FSRC ${F}.c ${OTHER})
-  ADD_EXECUTABLE(${F} ${FSRC})
+MACRO(build_bin_test F)
+  ADD_EXECUTABLE(${F} ${F}.c)
   TARGET_LINK_LIBRARIES(${F} netcdf ${ALL_TLL_LIBS})
   IF(MSVC)
     SET_TARGET_PROPERTIES(${F}
@@ -1319,8 +1318,8 @@ MACRO(add_bin_test_no_prefix F)
 ENDMACRO()
 
 # Binary tests which are used by a script looking for a specific name.
-MACRO(build_bin_test_no_prefix F OTHER)
-  build_bin_test(${F} ${OTHER})
+MACRO(build_bin_test_no_prefix F)
+  build_bin_test(${F})
   IF(MSVC)
     SET_PROPERTY(TEST ${F} PROPERTY FOLDER "tests/")
     SET_TARGET_PROPERTIES(${F} PROPERTIES RUNTIME_OUTPUT_DIRECTORY
