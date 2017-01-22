@@ -27,16 +27,16 @@ if test "x${RESET}" = x1 ; then rm -fr ${BASELINEH}/*.dmp ; fi
 for f in $F ; do
     URL="dap4://test.opendap.org:8080/opendap/nc4_test_files/${f}"
     echo "testing: $URL"
-    if ! ../ncdump/ncdump ${URL} > ./results/${f}.dmp; then
+    if ! ../ncdump/ncdump ${URL} > ./results/${f}.hyrax; then
         failure "${URL}"
     fi
     if test "x${TEST}" = x1 ; then
-	if ! diff -wBb ${BASELINEH}/${f}.dmp ./results/${f}.dmp ; then
-	    failure "diff ${f}.dmp"
+	if ! diff -wBb ${BASELINEREM}/${f}.hyrax ./results/${f}.hyrax ; then
+	    failure "diff ${f}.hyrax"
 	fi
     elif test "x${RESET}" = x1 ; then
 	echo "${f}:" 
-	cp ./results/${f}.dmp ${BASELINEH}/${f}.dmp
+	cp ./results/${f}.hyrax ${BASELINEH}/${f}.hyrax
     fi
 done
 
